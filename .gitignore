@@ -129,5 +129,4 @@ dist
 .yarn/install-state.gz
 .pnp.*
 
-
-/tmp/error-logs.txt
+tmp/error-logs.txt
