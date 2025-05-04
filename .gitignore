@@ -130,5 +130,4 @@ dist
 .pnp.*
 
 
-/tmp
-/error.logs.txt
+/tmp/error-logs.txt

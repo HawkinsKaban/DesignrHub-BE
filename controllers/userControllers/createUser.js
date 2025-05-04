@@ -1,13 +1,14 @@
 const mongoose = require("mongoose");
 const UserModel = require("../../models/userModel");
-
-const { errorLogs } = require("../../utils/errorLogs")
+const { errorLogs } = require("../../utils/errorLogs");
 
 exports.createUser = async (req, res) => {
     const { username, email, password, nomor, language } = req.body;
     const session = await mongoose.startSession();
 
     try {
+        session.startTransaction();
+
         let user = await UserModel.findOne(
             { $or: [{ username }, { email }, { nomor }] },
             null,
@@ -24,27 +25,25 @@ exports.createUser = async (req, res) => {
             });
         }
 
-        const newUser = new UserModel(
-            {
-                username,
-                email,
-                password,
-                nomor,
-                emailVerified: true,
-                premiumAccess: false,
-                premiumExpiresAt: null,
-                currentSessionToken: null,
-                subscriptionPackage: null,
-                isAfiliator: false,
-                afiliatedBy: null,
-                codeAfiliator: null,
-                expireAfiliator: null,
-                status: "active",
-                subscriptionPackage: []
-            }
-        );
+        const newUser = new UserModel({
+            username,
+            email,
+            password,
+            nomor,
+            emailVerified: true,
+            premiumAccess: false,
+            premiumExpiresAt: null,
+            currentSessionToken: null,
+            subscriptionPackage: null,  // Gunakan null jika tidak ada paket
+            isAfiliator: false,
+            afiliatedBy: null,
+            codeAfiliator: null,
+            expireAfiliator: null,
+            status: "active",
+        });
 
         await newUser.save({ session });
+
         await session.commitTransaction();
 
         res.status(201).json({
@@ -59,4 +58,4 @@ exports.createUser = async (req, res) => {
     } finally {
         session.endSession();
     }
-}
+};

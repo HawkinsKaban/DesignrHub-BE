@@ -1,0 +1,1908 @@
+{
+	"info": {
+		"_postman_id": "e9db1a41-5024-4337-bd2d-5791cc4f6411",
+		"name": "DesignrHub API",
+		"description": "A comprehensive collection for interacting with the DesignrHub Backend API.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "44192925",
+		"_collection_link": "https://rayjob.postman.co/workspace/ReacteevID~3a2c7ef9-e234-4537-8310-a7a95682a006/collection/44192925-e9db1a41-5024-4337-bd2d-5791cc4f6411?action=share&source=collection_link&creator=44192925"
+	},
+	"item": [
+		{
+			"name": "1. Authentication",
+			"item": [
+				{
+					"name": "Register User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{ \n    \"username\" : \"JorLojors\", \n    \"email\" : \"nugas123man@gmail.com\", \n    \"password\" : \"Abc.0429\", \n    \"nomor\" : \"089637278577\", \n    \"language\" : \"id\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/auth/register",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"auth",
+								"register"
+							]
+						},
+						"description": "Register a new user account. After registration, user will receive a verification email."
+					},
+					"response": []
+				},
+				{
+					"name": "Login User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.token) {",
+									"    pm.environment.set('userToken', jsonData.token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{ \n    \"email\" : \"nugas123man@gmail.com\",\n    \"password\" : \"Abc.0429\",\n    \"language\" : \"id\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/auth/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"auth",
+								"login"
+							]
+						},
+						"description": "Authenticates a user and returns a JWT token. The token is automatically saved to the userToken environment variable."
+					},
+					"response": []
+				},
+				{
+					"name": "Verify Email",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/auth/verify/:token",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"auth",
+								"verify",
+								":token"
+							],
+							"variable": [
+								{
+									"key": "token",
+									"value": "VERIFICATION_TOKEN",
+									"description": "JWT token sent in verification email"
+								}
+							]
+						},
+						"description": "Verifies a user's email address using the token sent to their email."
+					},
+					"response": []
+				},
+				{
+					"name": "Request Password Reset",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\" : \"nugas123man@gmail.com\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/auth/request-forgot-password",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"auth",
+								"request-forgot-password"
+							]
+						},
+						"description": "Requests a password reset link to be sent to the specified email address."
+					},
+					"response": []
+				},
+				{
+					"name": "Logout User",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{userToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/auth/logout",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"auth",
+								"logout"
+							]
+						},
+						"description": "Logs out the currently authenticated user by invalidating their token."
+					},
+					"response": []
+				},
+				{
+					"name": "Register Admin",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{ \n    \"username\": \"admin\", \n    \"email\": \"adminDesignerHub@gmail.com\", \n    \"password\" : \"Abc.123456\" \n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/admin/register",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"admin",
+								"register"
+							]
+						},
+						"description": "Creates a new admin account."
+					},
+					"response": []
+				},
+				{
+					"name": "Login Admin",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.token) {",
+									"    pm.environment.set('adminToken', jsonData.token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{ \n    \"email\" : \"adminDesignerHub@gmail.com\", \n    \"password\" : \"Abc.123456\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/admin/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"admin",
+								"login"
+							]
+						},
+						"description": "Authenticates an admin user and returns a JWT token. The token is automatically saved to the adminToken environment variable."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for user authentication, registration, and session management"
+		},
+		{
+			"name": "2. User Management",
+			"item": [
+				{
+					"name": "Get All Users",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/user?page=1&limit=10&sortColumn=createdAt&sortOrder=desc&status=active",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"user"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Page number for pagination"
+								},
+								{
+									"key": "limit",
+									"value": "10",
+									"description": "Number of items per page"
+								},
+								{
+									"key": "sortColumn",
+									"value": "createdAt",
+									"description": "Column to sort by"
+								},
+								{
+									"key": "sortOrder",
+									"value": "desc",
+									"description": "Sort order: asc or desc"
+								},
+								{
+									"key": "status",
+									"value": "active",
+									"description": "Filter by user status"
+								},
+								{
+									"key": "search",
+									"value": "",
+									"description": "Search term for username/email",
+									"disabled": true
+								},
+								{
+									"key": "premiumAccess",
+									"value": "",
+									"description": "Filter by premium access status",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Returns a paginated list of all users. Admin access only."
+					},
+					"response": []
+				},
+				{
+					"name": "Get User By ID",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/user/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"user",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": ""
+								}
+							]
+						},
+						"description": "Returns detailed information about a specific user. Admin access only."
+					},
+					"response": []
+				},
+				{
+					"name": "Create User",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{ \n    \"username\" : \"JorLojors\", \n    \"email\" : \"nugas123man@gmail.com\", \n    \"password\" : \"Abc.0429\", \n    \"nomor\" : \"089637278577\", \n    \"language\" : \"id\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/user/create",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"user",
+								"create"
+							]
+						},
+						"description": "Creates a new user account. Admin access only. This endpoint differs from user registration as it allows admins to create accounts."
+					},
+					"response": []
+				},
+				{
+					"name": "Update User Information",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"updatedusername\",\n    \"email\": \"updated@example.com\",\n    \"password\": \"NewPassword123\",\n    \"role\": \"user\",\n    \"status\": \"active\",\n    \"nomor\": \"081234567890\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/user/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"user",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "USER_ID",
+									"description": "User's MongoDB ID"
+								}
+							]
+						},
+						"description": "Updates a user's information. Admin access only."
+					},
+					"response": []
+				},
+				{
+					"name": "Update User Subscription",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"activePackage\": [\n        {\n            \"packageId\": \"PACKAGE_ID\",\n            \"activeDate\": \"2025-05-01T00:00:00.000Z\",\n            \"priority\": 1,\n            \"statusActive\": true,\n            \"pendingDate\": 0\n        }\n    ],\n    \"premiumAccess\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/user/subscription/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"user",
+								"subscription",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "USER_ID",
+									"description": "User's MongoDB ID"
+								}
+							]
+						},
+						"description": "Updates a user's subscription information. Admin access only."
+					},
+					"response": []
+				},
+				{
+					"name": "Get User Profile Dashboard",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{userToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/user/profile/dashboard",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"user",
+								"profile",
+								"dashboard"
+							]
+						},
+						"description": "Returns the current user's profile information including subscription details."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete User",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/user/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"user",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "USER_ID",
+									"description": "User's MongoDB ID"
+								}
+							]
+						},
+						"description": "Permanently deletes a user account. Admin access only."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for managing user accounts and profiles"
+		},
+		{
+			"name": "3. Categories",
+			"item": [
+				{
+					"name": "Get All Categories",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/category/getAll?page=1&limit=15&categoryName=&sortColumn=createdAt&sortOrder=desc",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"category",
+								"getAll"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Page number for pagination"
+								},
+								{
+									"key": "limit",
+									"value": "15",
+									"description": "Number of items per page"
+								},
+								{
+									"key": "categoryName",
+									"value": "",
+									"description": "Filter by category name"
+								},
+								{
+									"key": "sortColumn",
+									"value": "createdAt",
+									"description": "Column to sort by"
+								},
+								{
+									"key": "sortOrder",
+									"value": "desc",
+									"description": "Sort order: asc or desc"
+								}
+							]
+						},
+						"description": "Returns a paginated list of all categories."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Category",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"category test\",\n    \"description\": \"category description\",\n    \"allApps\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/category/create",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"category",
+								"create"
+							]
+						},
+						"description": "Creates a new category."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Category",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Updated category test\",\n    \"description\": \"Updated category description\",\n    \"allApps\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/category/update/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"category",
+								"update",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "CATEGORY_ID",
+									"description": "Category's MongoDB ID"
+								}
+							]
+						},
+						"description": "Updates an existing category."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Category",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/category/delete/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"category",
+								"delete",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "CATEGORY_ID",
+									"description": "Category's MongoDB ID"
+								}
+							]
+						},
+						"description": "Deletes a category."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for managing content categories"
+		},
+		{
+			"name": "4. Types",
+			"item": [
+				{
+					"name": "Get All Types",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/type?page=1&limit=15&sortColumn=createdAt&sortOrder=desc&search=&status=",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"type"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Page number for pagination"
+								},
+								{
+									"key": "limit",
+									"value": "15",
+									"description": "Number of items per page"
+								},
+								{
+									"key": "sortColumn",
+									"value": "createdAt",
+									"description": "Column to sort by"
+								},
+								{
+									"key": "sortOrder",
+									"value": "desc",
+									"description": "Sort order: asc or desc"
+								},
+								{
+									"key": "search",
+									"value": "",
+									"description": "Search term for type name"
+								},
+								{
+									"key": "status",
+									"value": "",
+									"description": "Filter by status"
+								}
+							]
+						},
+						"description": "Returns a paginated list of all types."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Type",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "name",
+									"value": "test type",
+									"description": "Type name",
+									"type": "text"
+								},
+								{
+									"key": "typeLogo",
+									"description": "Logo image for the type",
+									"type": "file",
+									"src": []
+								},
+								{
+									"key": "status",
+									"value": "all",
+									"description": "Type status (all, dev, ov)",
+									"type": "text"
+								},
+								{
+									"key": "basePrice",
+									"value": "29000",
+									"description": "Base price",
+									"type": "text"
+								},
+								{
+									"key": "url",
+									"value": "https://chatgpt.com/",
+									"description": "Service URL",
+									"type": "text"
+								},
+								{
+									"key": "targetType",
+									"value": "cookies",
+									"description": "Target type",
+									"type": "text"
+								},
+								{
+									"key": "note",
+									"value": "ini untuk test",
+									"description": "Additional notes",
+									"type": "text"
+								},
+								{
+									"key": "category",
+									"value": "test",
+									"description": "Category name",
+									"type": "text"
+								},
+								{
+									"key": "isActive",
+									"value": "true",
+									"description": "Active status",
+									"type": "text"
+								},
+								{
+									"key": "categoryId",
+									"value": "67bcf4d2fd8e1b2784cbafc1",
+									"description": "Category ID reference",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/type/create",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"type",
+								"create"
+							]
+						},
+						"description": "Creates a new type with its logo and details."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Type",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "name",
+									"value": "Updated test type",
+									"type": "text"
+								},
+								{
+									"key": "typeLogo",
+									"description": "Updated logo image",
+									"type": "file",
+									"src": []
+								},
+								{
+									"key": "status",
+									"value": "all",
+									"type": "text"
+								},
+								{
+									"key": "basePrice",
+									"value": "29000",
+									"type": "text"
+								},
+								{
+									"key": "url",
+									"value": "https://chatgpt.com/",
+									"type": "text"
+								},
+								{
+									"key": "targetType",
+									"value": "cookies",
+									"type": "text"
+								},
+								{
+									"key": "note",
+									"value": "updated untuk test",
+									"type": "text"
+								},
+								{
+									"key": "category",
+									"value": "test",
+									"type": "text"
+								},
+								{
+									"key": "isActive",
+									"value": "true",
+									"type": "text"
+								},
+								{
+									"key": "categoryId",
+									"value": "67bcf4d2fd8e1b2784cbafc1",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/type/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"type",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "TYPE_ID",
+									"description": "Type's MongoDB ID"
+								}
+							]
+						},
+						"description": "Updates an existing type."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Type",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/type/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"type",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "TYPE_ID",
+									"description": "Type's MongoDB ID"
+								}
+							]
+						},
+						"description": "Deletes a type."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for managing service types"
+		},
+		{
+			"name": "5. Items",
+			"item": [
+				{
+					"name": "Get All Items",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/item/find?page=1&limit=15&itemName=&typeId=&status=&sortColumn=createdAt&sortOrder=desc",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"item",
+								"find"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Page number for pagination"
+								},
+								{
+									"key": "limit",
+									"value": "15",
+									"description": "Number of items per page"
+								},
+								{
+									"key": "itemName",
+									"value": "",
+									"description": "Filter by item name"
+								},
+								{
+									"key": "typeId",
+									"value": "",
+									"description": "Filter by type ID"
+								},
+								{
+									"key": "status",
+									"value": "",
+									"description": "Filter by status (active/inactive)"
+								},
+								{
+									"key": "sortColumn",
+									"value": "createdAt",
+									"description": "Column to sort by"
+								},
+								{
+									"key": "sortOrder",
+									"value": "desc",
+									"description": "Sort order: asc or desc"
+								}
+							]
+						},
+						"description": "Returns a paginated list of all items."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Item",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "itemName",
+									"value": "test item",
+									"description": "Item name",
+									"type": "text"
+								},
+								{
+									"key": "description",
+									"value": "test item description",
+									"description": "Item description",
+									"type": "text"
+								},
+								{
+									"key": "status",
+									"value": "true",
+									"description": "Item status",
+									"type": "text"
+								},
+								{
+									"key": "endDate",
+									"value": "2025-10-01T00:00:00.000Z",
+									"description": "Expiration date",
+									"type": "text"
+								},
+								{
+									"key": "username",
+									"value": "test",
+									"description": "Account username",
+									"type": "text"
+								},
+								{
+									"key": "password",
+									"value": "test",
+									"description": "Account password",
+									"type": "text"
+								},
+								{
+									"key": "pin",
+									"value": "1111",
+									"description": "PIN if required",
+									"type": "text"
+								},
+								{
+									"key": "typeId",
+									"value": "67be2c2561e0d91061c680f7",
+									"description": "Type ID reference",
+									"type": "text"
+								},
+								{
+									"key": "url",
+									"value": "https://chatgpt.com/",
+									"description": "Service URL",
+									"type": "text"
+								},
+								{
+									"key": "logo",
+									"value": "",
+									"description": "Logo image if needed",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/item/create",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"item",
+								"create"
+							]
+						},
+						"description": "Creates a new item with its details and auth credentials."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Item",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "itemName",
+									"value": "updated test item",
+									"type": "text"
+								},
+								{
+									"key": "description",
+									"value": "updated test item description",
+									"type": "text"
+								},
+								{
+									"key": "status",
+									"value": "true",
+									"type": "text"
+								},
+								{
+									"key": "endDate",
+									"value": "2025-11-01T00:00:00.000Z",
+									"type": "text"
+								},
+								{
+									"key": "username",
+									"value": "updated_test",
+									"type": "text"
+								},
+								{
+									"key": "password",
+									"value": "updated_test",
+									"type": "text"
+								},
+								{
+									"key": "pin",
+									"value": "2222",
+									"type": "text"
+								},
+								{
+									"key": "typeId",
+									"value": "67be2c2561e0d91061c680f7",
+									"type": "text"
+								},
+								{
+									"key": "url",
+									"value": "https://chatgpt.com/updated",
+									"type": "text"
+								},
+								{
+									"key": "logo",
+									"value": "",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/item/update/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"item",
+								"update",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "ITEM_ID",
+									"description": "Item's MongoDB ID"
+								}
+							]
+						},
+						"description": "Updates an existing item."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Item",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/item/delete/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"item",
+								"delete",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "ITEM_ID",
+									"description": "Item's MongoDB ID"
+								}
+							]
+						},
+						"description": "Deletes an item."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for managing service items"
+		},
+		{
+			"name": "6. Packages",
+			"item": [
+				{
+					"name": "Get All Packages",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{userToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/packages/list?page=1&limit=15&search=&sortColumn=packageName&sortOrder=asc&status=",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"packages",
+								"list"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Page number for pagination"
+								},
+								{
+									"key": "limit",
+									"value": "15",
+									"description": "Number of items per page"
+								},
+								{
+									"key": "search",
+									"value": "",
+									"description": "Search term for package name"
+								},
+								{
+									"key": "sortColumn",
+									"value": "packageName",
+									"description": "Column to sort by"
+								},
+								{
+									"key": "sortOrder",
+									"value": "asc",
+									"description": "Sort order: asc or desc"
+								},
+								{
+									"key": "status",
+									"value": "",
+									"description": "Filter by status (active/inactive)"
+								}
+							]
+						},
+						"description": "Returns a paginated list of all packages. Requires user authentication."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Package",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"packageName\": \"Paket Premium\",\n    \"price\": 100000,\n    \"discountPrice\": 75000,\n    \"durationName\": \"1 Bulan\",\n    \"durationInDays\": 30,\n    \"categoryId\": \"67bcf4d2fd8e1b2784cbafc1\",\n    \"onDiscount\": true,\n    \"endDiscountDate\": \"2025-03-01T00:00:00.000Z\",\n    \"isActive\": true,\n    \"priority\": 1\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/packages/create",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"packages",
+								"create"
+							]
+						},
+						"description": "Creates a new subscription package."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Package",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"packageName\": \"Updated Paket Premium\",\n    \"price\": 120000,\n    \"discountPrice\": 80000,\n    \"durationName\": \"1 Bulan+\",\n    \"durationInDays\": 35,\n    \"categoryId\": \"67bcf4d2fd8e1b2784cbafc1\",\n    \"onDiscount\": true,\n    \"endDiscountDate\": \"2025-04-01T00:00:00.000Z\",\n    \"isActive\": true,\n    \"priority\": 1\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/packages/update/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"packages",
+								"update",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "PACKAGE_ID",
+									"description": "Package's MongoDB ID"
+								}
+							]
+						},
+						"description": "Updates an existing package. Admin access only."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Package",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/packages/delete/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"packages",
+								"delete",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "PACKAGE_ID",
+									"description": "Package's MongoDB ID"
+								}
+							]
+						},
+						"description": "Deletes a package. Admin access only."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for managing subscription packages"
+		},
+		{
+			"name": "7. Vouchers",
+			"item": [
+				{
+					"name": "Get All Vouchers",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{userToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/vouchers/list?page=1&limit=15&search=&sortColumn=createdAt&sortOrder=desc&status=",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"vouchers",
+								"list"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Page number for pagination"
+								},
+								{
+									"key": "limit",
+									"value": "15",
+									"description": "Number of items per page"
+								},
+								{
+									"key": "search",
+									"value": "",
+									"description": "Search term for voucher name or code"
+								},
+								{
+									"key": "sortColumn",
+									"value": "createdAt",
+									"description": "Column to sort by"
+								},
+								{
+									"key": "sortOrder",
+									"value": "desc",
+									"description": "Sort order: asc or desc"
+								},
+								{
+									"key": "status",
+									"value": "",
+									"description": "Filter by status (open/close)"
+								}
+							]
+						},
+						"description": "Returns a paginated list of all vouchers. Requires user authentication."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Voucher",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"startDate\": \"2025-03-01T00:00:00.000Z\",\n    \"endDate\": \"2025-03-31T23:59:59.000Z\",\n    \"name\": \"Voucher Diskon 10%\",\n    \"packageId\": \"67bcf5756ddddf07a9b13e20\",\n    \"discount\": \"10\",\n    \"discountType\": \"percentage\",\n    \"status\": \"open\",\n    \"code\": \"DISKON10\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/vouchers/create",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"vouchers",
+								"create"
+							]
+						},
+						"description": "Creates a new voucher."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Voucher",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"startDate\": \"2025-03-01T00:00:00.000Z\",\n    \"endDate\": \"2025-04-15T23:59:59.000Z\",\n    \"name\": \"Updated Voucher Diskon 15%\",\n    \"packageId\": \"67bcf5756ddddf07a9b13e20\",\n    \"discount\": \"15\",\n    \"discountType\": \"percentage\",\n    \"status\": \"open\",\n    \"code\": \"DISKON15\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/vouchers/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"vouchers",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "VOUCHER_ID",
+									"description": "Voucher's MongoDB ID"
+								}
+							]
+						},
+						"description": "Updates an existing voucher. Admin access only."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Voucher",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/vouchers/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"vouchers",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "VOUCHER_ID",
+									"description": "Voucher's MongoDB ID"
+								}
+							]
+						},
+						"description": "Deletes a voucher. Admin access only."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for managing discount vouchers"
+		},
+		{
+			"name": "8. Payments",
+			"item": [
+				{
+					"name": "Get All Payments",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/payments/getAll?limit=15&package_id=&payment_status=&search=&sortColumn=payment_time&sortOrder=desc&start=&to=&voucher_id=",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"payments",
+								"getAll"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "15",
+									"description": "Number of items per page"
+								},
+								{
+									"key": "package_id",
+									"value": "",
+									"description": "Filter by package ID"
+								},
+								{
+									"key": "payment_status",
+									"value": "",
+									"description": "Filter by payment status"
+								},
+								{
+									"key": "search",
+									"value": "",
+									"description": "Search term for username or invoice"
+								},
+								{
+									"key": "sortColumn",
+									"value": "payment_time",
+									"description": "Column to sort by"
+								},
+								{
+									"key": "sortOrder",
+									"value": "desc",
+									"description": "Sort order: asc or desc"
+								},
+								{
+									"key": "start",
+									"value": "",
+									"description": "Start date for filtering"
+								},
+								{
+									"key": "to",
+									"value": "",
+									"description": "End date for filtering"
+								},
+								{
+									"key": "voucher_id",
+									"value": "",
+									"description": "Filter by voucher ID"
+								},
+								{
+									"key": "cursor",
+									"value": "",
+									"description": "Cursor for pagination",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Returns a list of all payments with pagination and various filters."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Payment By ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/payments/get/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"payments",
+								"get",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "PAYMENT_ID",
+									"description": "Payment's MongoDB ID"
+								}
+							]
+						},
+						"description": "Returns detailed information about a specific payment."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Payment",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{userToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"package_id\" : \"67bcf5756ddddf07a9b13e20\",\n    \"method\":\"QRIS\",\n    \"voucher_id\" : \"67bcf63ba0ae0f7eef0b52b9\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/payments/create",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"payments",
+								"create"
+							]
+						},
+						"description": "Creates a new payment for a subscription package. Requires user authentication."
+					},
+					"response": []
+				},
+				{
+					"name": "Payment Callback",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"reference\": \"PAYMENT_REFERENCE\",\n    \"status\": \"paid\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/payments/callback",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"payments",
+								"callback"
+							]
+						},
+						"description": "Receives payment status updates from payment gateway. This endpoint is called by the payment provider."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for managing payments and transactions"
+		},
+		{
+			"name": "9. Logs",
+			"item": [
+				{
+					"name": "Get All Logs",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/log/getAll?page=1&limit=10",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"log",
+								"getAll"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Page number for pagination"
+								},
+								{
+									"key": "limit",
+									"value": "10",
+									"description": "Number of items per page"
+								}
+							]
+						},
+						"description": "Returns a paginated list of all system logs."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Log By ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/log/get/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"log",
+								"get",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "LOG_ID",
+									"description": "Log's MongoDB ID"
+								}
+							]
+						},
+						"description": "Returns detailed information about a specific log entry."
+					},
+					"response": []
+				},
+				{
+					"name": "Get User Logs",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{userToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/log/user",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"log",
+								"user"
+							]
+						},
+						"description": "Returns logs for the current user. Requires user authentication."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for accessing user activity logs"
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:3876",
+			"type": "string"
+		},
+		{
+			"key": "userToken",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "adminToken",
+			"value": "",
+			"type": "string"
+		}
+	]
+}

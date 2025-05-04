@@ -74,14 +74,20 @@ exports.getUserById = async (req, res) => {
     try {
         const user = await UserModel.findById(req.params.id)
             .select("-password")
-            .populate("activePackage.packageId", "packageName");
+            .populate({
+                path: "subscriptionPackage",
+                select: "packageName price durationName",
+            });
+
         if (!user) {
             return res.status(404).json({ message: "User not found" });
         }
 
         res.json(user);
     } catch (err) {
+        console.error(err);
         errorLogs(req, res, err, "controllers/userControllers/getUserById.js");
         res.status(500).send("Server Error");
     }
 };
+
