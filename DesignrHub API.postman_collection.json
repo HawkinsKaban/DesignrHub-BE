@@ -383,7 +383,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{ \n    \"username\" : \"JorLojors\", \n    \"email\" : \"nugas123man@gmail.com\", \n    \"password\" : \"Abc.0429\", \n    \"nomor\" : \"089637278577\", \n    \"language\" : \"id\"\n}"
+							"raw": "{ \n    \"username\" : \"raykaban\", \n    \"email\" : \"ray.kabanda@gmail.com\", \n    \"password\" : \"Abc.0429\", \n    \"nomor\" : \"082251617110\", \n    \"language\" : \"id\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/be/api/user/create",
@@ -1612,182 +1612,332 @@
 		{
 			"name": "8. Payments",
 			"item": [
-				{
-					"name": "Get All Payments",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/be/api/payments/getAll?limit=15&package_id=&payment_status=&search=&sortColumn=payment_time&sortOrder=desc&start=&to=&voucher_id=",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"be",
-								"api",
-								"payments",
-								"getAll"
-							],
-							"query": [
-								{
-									"key": "limit",
-									"value": "15",
-									"description": "Number of items per page"
-								},
-								{
-									"key": "package_id",
-									"value": "",
-									"description": "Filter by package ID"
-								},
-								{
-									"key": "payment_status",
-									"value": "",
-									"description": "Filter by payment status"
-								},
-								{
-									"key": "search",
-									"value": "",
-									"description": "Search term for username or invoice"
-								},
-								{
-									"key": "sortColumn",
-									"value": "payment_time",
-									"description": "Column to sort by"
-								},
-								{
-									"key": "sortOrder",
-									"value": "desc",
-									"description": "Sort order: asc or desc"
-								},
-								{
-									"key": "start",
-									"value": "",
-									"description": "Start date for filtering"
-								},
-								{
-									"key": "to",
-									"value": "",
-									"description": "End date for filtering"
-								},
-								{
-									"key": "voucher_id",
-									"value": "",
-									"description": "Filter by voucher ID"
-								},
-								{
-									"key": "cursor",
-									"value": "",
-									"description": "Cursor for pagination",
-									"disabled": true
-								}
-							]
-						},
-						"description": "Returns a list of all payments with pagination and various filters."
-					},
-					"response": []
+			  {
+				"name": "Get All Payments",
+				"request": {
+				  "auth": {
+					"type": "bearer",
+					"bearer": [
+					  {
+						"key": "token",
+						"value": "{{adminToken}}",
+						"type": "string"
+					  }
+					]
+				  },
+				  "method": "GET",
+				  "header": [],
+				  "url": {
+					"raw": "{{baseUrl}}/be/api/payments/getAll?limit=15&package_id=&payment_status=&search=&sortColumn=payment_time&sortOrder=desc&start=&to=&voucher_id=",
+					"host": [
+					  "{{baseUrl}}"
+					],
+					"path": [
+					  "be",
+					  "api",
+					  "payments",
+					  "getAll"
+					],
+					"query": [
+					  {
+						"key": "limit",
+						"value": "15",
+						"description": "Number of items per page"
+					  },
+					  {
+						"key": "package_id",
+						"value": "",
+						"description": "Filter by package ID"
+					  },
+					  {
+						"key": "payment_status",
+						"value": "",
+						"description": "Filter by payment status (pending, paid, expired, declined)"
+					  },
+					  {
+						"key": "search",
+						"value": "",
+						"description": "Search term for username or invoice"
+					  },
+					  {
+						"key": "sortColumn",
+						"value": "payment_time",
+						"description": "Column to sort by"
+					  },
+					  {
+						"key": "sortOrder",
+						"value": "desc",
+						"description": "Sort order: asc or desc"
+					  },
+					  {
+						"key": "start",
+						"value": "",
+						"description": "Start date for filtering (YYYY-MM-DD)"
+					  },
+					  {
+						"key": "to",
+						"value": "",
+						"description": "End date for filtering (YYYY-MM-DD)"
+					  },
+					  {
+						"key": "voucher_id",
+						"value": "",
+						"description": "Filter by voucher ID"
+					  },
+					  {
+						"key": "cursor",
+						"value": "",
+						"description": "Cursor for pagination",
+						"disabled": true
+					  }
+					]
+				  },
+				  "description": "Returns a paginated list of all payments with various filtering options. Admin access only."
 				},
-				{
-					"name": "Get Payment By ID",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/be/api/payments/get/:id",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"be",
-								"api",
-								"payments",
-								"get",
-								":id"
-							],
-							"variable": [
-								{
-									"key": "id",
-									"value": "PAYMENT_ID",
-									"description": "Payment's MongoDB ID"
-								}
-							]
-						},
-						"description": "Returns detailed information about a specific payment."
-					},
-					"response": []
+				"response": []
+			  },
+			  {
+				"name": "Get Payment By ID",
+				"request": {
+				  "auth": {
+					"type": "bearer",
+					"bearer": [
+					  {
+						"key": "token",
+						"value": "{{adminToken}}",
+						"type": "string"
+					  }
+					]
+				  },
+				  "method": "GET",
+				  "header": [],
+				  "url": {
+					"raw": "{{baseUrl}}/be/api/payments/get/:id",
+					"host": [
+					  "{{baseUrl}}"
+					],
+					"path": [
+					  "be",
+					  "api",
+					  "payments",
+					  "get",
+					  ":id"
+					],
+					"variable": [
+					  {
+						"key": "id",
+						"value": "PAYMENT_ID",
+						"description": "Payment's MongoDB ID"
+					  }
+					]
+				  },
+				  "description": "Returns detailed information about a specific payment, including related user and package data. Admin access only."
 				},
-				{
-					"name": "Create Payment",
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{userToken}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"package_id\" : \"67bcf5756ddddf07a9b13e20\",\n    \"method\":\"QRIS\",\n    \"voucher_id\" : \"67bcf63ba0ae0f7eef0b52b9\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/be/api/payments/create",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"be",
-								"api",
-								"payments",
-								"create"
-							]
-						},
-						"description": "Creates a new payment for a subscription package. Requires user authentication."
-					},
-					"response": []
+				"response": []
+			  },
+			  {
+				"name": "Get Payment Statistics",
+				"request": {
+				  "auth": {
+					"type": "bearer",
+					"bearer": [
+					  {
+						"key": "token",
+						"value": "{{adminToken}}",
+						"type": "string"
+					  }
+					]
+				  },
+				  "method": "GET",
+				  "header": [],
+				  "url": {
+					"raw": "{{baseUrl}}/be/api/payments/stats?startDate=2025-04-01&endDate=2025-05-01",
+					"host": [
+					  "{{baseUrl}}"
+					],
+					"path": [
+					  "be",
+					  "api",
+					  "payments",
+					  "stats"
+					],
+					"query": [
+					  {
+						"key": "startDate",
+						"value": "2025-04-01",
+						"description": "Start date for the statistics period (YYYY-MM-DD)"
+					  },
+					  {
+						"key": "endDate",
+						"value": "2025-05-01",
+						"description": "End date for the statistics period (YYYY-MM-DD)"
+					  }
+					]
+				  },
+				  "description": "Returns payment statistics for a specified period, including total revenue, transaction counts by status, daily revenue trends, and payment method breakdown. Admin access only."
 				},
-				{
-					"name": "Payment Callback",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"reference\": \"PAYMENT_REFERENCE\",\n    \"status\": \"paid\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/be/api/payments/callback",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"be",
-								"api",
-								"payments",
-								"callback"
-							]
-						},
-						"description": "Receives payment status updates from payment gateway. This endpoint is called by the payment provider."
-					},
-					"response": []
-				}
+				"response": []
+			  },
+			  {
+				"name": "Create Payment",
+				"request": {
+				  "auth": {
+					"type": "bearer",
+					"bearer": [
+					  {
+						"key": "token",
+						"value": "{{userToken}}",
+						"type": "string"
+					  }
+					]
+				  },
+				  "method": "POST",
+				  "header": [
+					{
+					  "key": "Content-Type",
+					  "value": "application/json"
+					}
+				  ],
+				  "body": {
+					"mode": "raw",
+					"raw": "{\n    \"package_id\": \"67bcf5756ddddf07a9b13e20\",\n    \"method\": \"QRIS\",\n    \"voucher_id\": \"67bcf63ba0ae0f7eef0b52b9\"\n}"
+				  },
+				  "url": {
+					"raw": "{{baseUrl}}/be/api/payments/create",
+					"host": [
+					  "{{baseUrl}}"
+					],
+					"path": [
+					  "be",
+					  "api",
+					  "payments",
+					  "create"
+					]
+				  },
+				  "description": "Creates a new payment for a subscription package and returns checkout information. Requires user authentication. Available payment methods: QRIS, OVO, DANA, SHOPEEPAY, BNIVA, BCAVA, MANDIRIVA, BRIVA, PERMATAVA, CIMBVA, MYBVA, BSIVA, ALFAMART, INDOMARET."
+				},
+				"response": []
+			  },
+			  {
+				"name": "Update Payment",
+				"request": {
+				  "auth": {
+					"type": "bearer",
+					"bearer": [
+					  {
+						"key": "token",
+						"value": "{{adminToken}}",
+						"type": "string"
+					  }
+					]
+				  },
+				  "method": "PUT",
+				  "header": [
+					{
+					  "key": "Content-Type",
+					  "value": "application/json"
+					}
+				  ],
+				  "body": {
+					"mode": "raw",
+					"raw": "{\n    \"payment_status\": \"paid\",\n    \"method\": \"QRIS\",\n    \"initial_status\": { \"value\": \"pending\" }\n}"
+				  },
+				  "url": {
+					"raw": "{{baseUrl}}/be/api/payments/update/:id",
+					"host": [
+					  "{{baseUrl}}"
+					],
+					"path": [
+					  "be",
+					  "api",
+					  "payments",
+					  "update",
+					  ":id"
+					],
+					"variable": [
+					  {
+						"key": "id",
+						"value": "PAYMENT_ID",
+						"description": "Payment's MongoDB ID"
+					  }
+					]
+				  },
+				  "description": "Updates payment information and processes user subscription accordingly. Admin access only. Status options: 'pending', 'paid', 'decline', 'expired'."
+				},
+				"response": []
+			  },
+			  {
+				"name": "Delete Payment",
+				"request": {
+				  "auth": {
+					"type": "bearer",
+					"bearer": [
+					  {
+						"key": "token",
+						"value": "{{adminToken}}",
+						"type": "string"
+					  }
+					]
+				  },
+				  "method": "DELETE",
+				  "header": [],
+				  "url": {
+					"raw": "{{baseUrl}}/be/api/payments/delete/:id",
+					"host": [
+					  "{{baseUrl}}"
+					],
+					"path": [
+					  "be",
+					  "api",
+					  "payments",
+					  "delete",
+					  ":id"
+					],
+					"variable": [
+					  {
+						"key": "id",
+						"value": "PAYMENT_ID",
+						"description": "Payment's MongoDB ID"
+					  }
+					]
+				  },
+				  "description": "Deletes a payment record. Only pending payments can be deleted. Admin access only."
+				},
+				"response": []
+			  },
+			  {
+				"name": "Payment Callback",
+				"request": {
+				  "method": "POST",
+				  "header": [
+					{
+					  "key": "Content-Type",
+					  "value": "application/json"
+					}
+				  ],
+				  "body": {
+					"mode": "raw",
+					"raw": "{\n    \"reference\": \"PAYMENT_REFERENCE\",\n    \"status\": \"paid\"\n}"
+				  },
+				  "url": {
+					"raw": "{{baseUrl}}/be/api/payments/callback",
+					"host": [
+					  "{{baseUrl}}"
+					],
+					"path": [
+					  "be",
+					  "api",
+					  "payments",
+					  "callback"
+					]
+				  },
+				  "description": "Webhook endpoint for payment gateway callbacks. Receives payment status updates and updates user subscriptions accordingly. This endpoint is called automatically by the payment provider. Status options: 'paid', 'expired', 'failed'."
+				},
+				"response": []
+			  }
 			],
-			"description": "Endpoints for managing payments and transactions"
-		},
+			"description": "Endpoints for managing payments, transactions, and subscription activations."
+		  },
 		{
 			"name": "9. Logs",
 			"item": [

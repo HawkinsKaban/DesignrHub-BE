@@ -5,6 +5,7 @@ const createCategoryController = require('../controllers/categoryControllers/cre
 const updateCategoryController = require('../controllers/categoryControllers/updateCategory')
 const deleteCategoryController = require('../controllers/categoryControllers/deleteCategory')
 const getAllCategoryController = require('../controllers/categoryControllers/getAllCategory')
+const getApplicationsByCategoryController = require('../controllers/categoryControllers/getApplicationsByCategory')
 
 const { protect, protectAdmin } = require("../middlewares/authentication")
 
@@ -22,7 +23,8 @@ router.put("/update/:id", updateCategoryController.updateCategory);
 router.delete("/delete/:id", deleteCategoryController.deleteCategory);
 // http://localhost:3876/be/api/category/delete/:id
 
-
-
+// New endpoint for applications by category (for landing page)
+router.get("/applications", getApplicationsByCategoryController.getApplicationsByCategory);
+// http://localhost:3876/be/api/category/applications
 
 module.exports = router
