@@ -3,8 +3,10 @@ const router = express.Router()
 
 const createPackageController = require('../controllers/packageControllers/createPackage')
 const getPackageController = require('../controllers/packageControllers/getPackage')
+const getActivePackagesController = require('../controllers/packageControllers/getActivePackages');
 const updatePackageController = require('../controllers/packageControllers/updatePackage')
 const deletePackageController = require('../controllers/packageControllers/deletePackage')
+
 
 
 const { protect, protectAdmin } = require("../middlewares/authentication")
@@ -22,5 +24,8 @@ router.get("/list", protect, getPackageController.GetAllPackage);
 
 router.delete("/delete/:id", protectAdmin, deletePackageController.deletePackage);
 // http://localhost:3876/be/api/package/delete/612f3b3b7b3b3b3b3b3b3b3b
+
+router.get("/active", protect, getActivePackagesController.getActivePackages);
+// http://localhost:3876/be/api/packages/active
 
 module.exports = router
