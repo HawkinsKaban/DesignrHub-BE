@@ -7,8 +7,6 @@ const getActivePackagesController = require('../controllers/packageControllers/g
 const updatePackageController = require('../controllers/packageControllers/updatePackage')
 const deletePackageController = require('../controllers/packageControllers/deletePackage')
 
-
-
 const { protect, protectAdmin } = require("../middlewares/authentication")
 
 router.put("/update/:id", protectAdmin, updatePackageController.updatePackage);
