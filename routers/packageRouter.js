@@ -19,6 +19,8 @@ router.post("/create", createPackageController.createPackage);
 router.get("/list", protect, getPackageController.GetAllPackage);
 // http://localhost:3876/be/api/package/list
 
+router.get("/:id", protect, getPackageController.GetPackageById);
+// http://localhost:3876/be/api/packages/:id
 
 router.delete("/delete/:id", protectAdmin, deletePackageController.deletePackage);
 // http://localhost:3876/be/api/package/delete/612f3b3b7b3b3b3b3b3b3b3b
