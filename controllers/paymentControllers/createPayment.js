@@ -1,129 +1,144 @@
 const mongoose = require("mongoose");
-const axios = require("axios");
-const { createHmac } = require("node:crypto");
 const VoucherModel = require("../../models/voucerModel");
 const PaymentModel = require("../../models/paymentModel");
 const PackageModel = require("../../models/packageModel");
 const { errorLogs } = require("../../utils/errorLogs");
-const { convertUnixtoDateTime } = require("../../utils/convertDate");
+const polarService = require("../../services/polarService");
 require("dotenv").config();
 
 exports.createUserPayment = async (req, res) => {
-    const { package_id, method, voucher_id, afiliator_id } = req.body;
+    const { package_id, voucher_id, afiliator_id } = req.body;
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
+        // Get package details
         const package = await PackageModel.findById(package_id).session(session);
         if (!package) {
+            await session.abortTransaction();
             session.endSession();
-            return res.status(404).json({ message: "Package not found" })
+            return res.status(404).json({ message: "Package not found" });
         }
 
+        // Generate invoice number
         const countPayment = await PaymentModel.countDocuments().session(session);
         const hariIni = new Date();
         const hari = String(hariIni.getDate()).padStart(2, "0");
         const bulan = String(hariIni.getMonth() + 1).padStart(2, "0");
-        const merchant_ref = `INV${hari}${bulan}${hariIni.getFullYear()}${countPayment + 1}`;
+        const invoice = `INV${hari}${bulan}${hariIni.getFullYear()}${countPayment + 1}`;
 
-        let amountTotal = package.price;
+        // Calculate amount with discounts
+        let originalAmount = package.price;
+        let discountAmount = 0;
+        let finalAmount = originalAmount;
 
+        // Apply package discount if available
+        if (package.onDiscount && package.discountPrice && package.endDiscountDate > new Date()) {
+            const packageDiscount = originalAmount - package.discountPrice;
+            discountAmount += packageDiscount;
+            finalAmount = package.discountPrice;
+        }
+
+        // Apply voucher discount if provided
         if (voucher_id) {
             try {
                 const voucherData = await VoucherModel.findById(voucher_id).session(session);
-                if (voucherData) {
-                    if (Array.isArray(voucherData.packageId)) {
-                        const isPackageExist = voucherData.packageId.includes(package._id);
-                        if (isPackageExist) {
-                            if (voucherData.discountType === "percent") {
-                                amountTotal -= (package.price * voucherData.discount) / 100;
-                            } else {
-                                amountTotal -= voucherData.discount;
-                            }
+                if (voucherData && voucherData.status === 'open' && new Date(voucherData.endDate) > new Date()) {
+                    if (Array.isArray(voucherData.packageId) && voucherData.packageId.includes(package._id)) {
+                        if (voucherData.discountType === "percentage") {
+                            const voucherDiscount = (finalAmount * parseFloat(voucherData.discount)) / 100;
+                            discountAmount += voucherDiscount;
+                            finalAmount -= voucherDiscount;
+                        } else {
+                            const voucherDiscount = parseFloat(voucherData.discount);
+                            discountAmount += voucherDiscount;
+                            finalAmount -= voucherDiscount;
                         }
                     }
                 }
             } catch (error) {
-                console.error("Error fetching voucher:", error);
+                console.error("Error applying voucher:", error);
             }
         }
 
-        const signature = createHmac("sha256", process.env.TRIPAY_PRIVATE_KEY)
-            .update(process.env.TRIPAY_MERCHANT_CODE + merchant_ref + amountTotal)
-            .digest("hex");
+        // Ensure final amount is not negative
+        finalAmount = Math.max(finalAmount, 0);
 
-        const response = await axios.post(
-            `${process.env.TRIPAY_URL}transaction/create`,
-            {
-                method,
-                merchant_ref,
-                amount: amountTotal,
-                customer_name: req.user.username,
-                customer_email: req.user.email,
-                customer_phone: req.user.nomor || "081726534288",
-                order_items: [
-                    {
-                        sku: "FB-06",
-                        name: package.packageName,
-                        price: amountTotal,
-                        quantity: 1,
-                        product_url: "https://domainanda.com/redirect",
-                        image_url: "https://domainanda.com/redirect",
-                    },
-                ],
-                signature,
-            },
-            {
-                headers: {
-                    Authorization: `Bearer ${process.env.TRIPAY_API_KEY}`,
-                    "Content-Type": "application/json",
-                },
+        // Convert to cents for Polar (assuming IDR)
+        const amountInCents = polarService.convertToCents(finalAmount);
+
+        // Prepare checkout data for Polar
+        const checkoutData = {
+            products: [package._id.toString()], // We'll need to create products in Polar first
+            customer_email: req.user.email,
+            customer_name: req.user.username,
+            customer_external_id: req.user._id.toString(),
+            amount: amountInCents,
+            success_url: `${process.env.FE_URL}payment/success?checkout_id={CHECKOUT_ID}`,
+            metadata: {
+                user_id: req.user._id.toString(),
+                package_id: package._id.toString(),
+                invoice: invoice,
+                voucher_id: voucher_id || null,
+                afiliator_id: afiliator_id || null,
+                original_amount: originalAmount,
+                discount_amount: discountAmount
             }
-        );
+        };
 
-        if (!response.data.success) {
-            throw new Error("Payment gateway error: " + JSON.stringify(response.data));
-        }
+        // Create checkout session with Polar
+        const polarCheckout = await polarService.createCheckout(checkoutData);
 
-        const data = response.data.data;
+        // Calculate expiration time (24 hours from now)
+        const expiredTime = new Date();
+        expiredTime.setHours(expiredTime.getHours() + 24);
+
+        // Create payment record in our database
         const newUserPayment = new PaymentModel({
             userId: req.user._id,
-            invoice: merchant_ref,
+            userName: req.user.username,
             package_id,
             payment_time: Date.now(),
-            expired_time: convertUnixtoDateTime(data.expired_time),
-            method,
-            reference: data.reference,
-            admin: data.fee_customer,
-            amount: data.amount_received,
-            total: data.amount,
-            checkout_url: data.checkout_url,
-            payment_name: data.payment_name,
+            expired_time: expiredTime,
+            polar_checkout_id: polarCheckout.id,
+            reference: polarCheckout.id, // Store checkout ID as reference
+            admin: 0, // Polar handles fees
+            amount: finalAmount,
+            total: originalAmount,
+            discount_amount: discountAmount,
+            checkout_url: polarCheckout.url,
+            invoice,
             voucher_id,
             afiliator_id,
+            polar_metadata: polarCheckout,
+            currency: "IDR"
         });
 
         await newUserPayment.save({ session });
-
         await session.commitTransaction();
         session.endSession();
 
         res.status(201).json({
-            msg: "Transaksi berhasil",
-            checkout_url: data.checkout_url,
+            success: true,
+            message: "Checkout session created successfully",
+            checkout_url: polarCheckout.url,
+            checkout_id: polarCheckout.id,
+            expires_at: polarCheckout.expires_at,
+            total_amount: finalAmount,
+            invoice: invoice
         });
+
     } catch (error) {
         await session.abortTransaction();
         session.endSession();
 
-        console.error("Transaction failed:", error);
+        console.error("Payment creation failed:", error);
         errorLogs(req, res, error.message, "controllers/paymentControllers/createPayment.js");
 
         res.status(500).json({
-            message: "Server error",
+            success: false,
+            message: "Failed to create payment",
             error: error.message,
         });
-    } finally {
-        session.endSession();
     }
 };

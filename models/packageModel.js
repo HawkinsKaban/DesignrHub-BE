@@ -43,6 +43,17 @@ const packageSchema = new mongoose.Schema(
             required: true,
             default: 0, // makin besar makin tinggi prioritasnya
         },
+        // Polar.sh integration fields
+        polar_product_id: {
+            type: String,
+            required: false,
+            unique: true,
+            sparse: true // Allows multiple null values but unique non-null values
+        },
+        polar_metadata: {
+            type: Object,
+            default: {}
+        }
     },
     {
         timestamps: true,
@@ -51,6 +62,7 @@ const packageSchema = new mongoose.Schema(
 
 packageSchema.index({ packageName: 1 });
 packageSchema.index({ categoryId: 1 });
+packageSchema.index({ polar_product_id: 1 });
 
 const Package = mongoose.model("Package", packageSchema);
 

@@ -34,6 +34,8 @@ exports.getAllPayment = async (req, res) => {
             query.$or = [
                 { userName: { $regex: search, $options: "i" } },
                 { invoice: { $regex: search, $options: "i" } },
+                { polar_checkout_id: { $regex: search, $options: "i" } },
+                { polar_order_id: { $regex: search, $options: "i" } },
             ];
         }
 
@@ -45,19 +47,35 @@ exports.getAllPayment = async (req, res) => {
         }
 
         const payments = await PaymentModel.find(query)
-            .populate("userId", "nama username")
-            .populate("package_id", "name price")
+            .populate("userId", "nama username email")
+            .populate("package_id", "packageName price")
             .populate("voucher_id", "code discount")
-            .select("userId userName package_id payment_status payment_time amount method invoice")
+            .select("userId userName package_id payment_status payment_time amount total discount_amount invoice polar_checkout_id polar_order_id currency")
             .sort(sortQuery)
             .limit(limit)
             .lean();
 
         const nextCursor = payments.length > 0 ? payments[payments.length - 1].payment_time : null;
 
-        res.status(200).json({ payments, nextCursor });
+        // Format the response to include additional Polar-specific fields
+        const formattedPayments = payments.map(payment => ({
+            ...payment,
+            checkout_method: payment.polar_checkout_id ? 'polar' : 'legacy',
+            final_amount: payment.total - (payment.discount_amount || 0)
+        }));
+
+        res.status(200).json({ 
+            success: true,
+            payments: formattedPayments, 
+            nextCursor,
+            total: payments.length
+        });
     } catch (error) {
         errorLogs(req, res, error.message, "controllers/paymentControllers/getAllPayment.js");
-        res.status(500).json({ message: "Terjadi kesalahan", error: error.message });
+        res.status(500).json({ 
+            success: false,
+            message: "Failed to fetch payments", 
+            error: error.message 
+        });
     }
 };

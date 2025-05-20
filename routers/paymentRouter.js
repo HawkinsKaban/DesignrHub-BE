@@ -11,7 +11,12 @@ const updatePaymentController = require('../controllers/paymentControllers/updat
 const getPaymentStatsController = require('../controllers/paymentControllers/getPaymentStats');
 const { protect, protectAdmin } = require("../middlewares/authentication");
 
-// Public routes
+// Webhook routes - no auth required
+// Make sure this controller exists and is properly exported
+router.post("/webhook/polar", callbackPaymentController.polarWebhook);
+// http://localhost:3876/be/api/payments/webhook/polar
+
+// Legacy callback (for backward compatibility)
 router.post("/callback", callbackPaymentController.paymentCallBack);
 // http://localhost:3876/be/api/payments/callback
 
