@@ -1,6 +1,7 @@
-# DesignrHub-BE
-
-DesignrHub-BE adalah layanan backend untuk platform DesignrHub, yang menyediakan endpoint API untuk manajemen pengguna, autentikasi, pemrosesan pembayaran, dan manajemen konten.
+]# DesignrHub-BE
+\
+DesignrHub-BE adalah layanan backend untuk platform DesignrHub, yang menyediakan endpoint API untuk manajemen pengguna, autentikasi,\
+pemrosesan pembayaran, dan manajemen konten.
 
 ## Fitur
 

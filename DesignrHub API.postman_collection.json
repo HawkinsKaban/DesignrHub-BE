@@ -1334,6 +1334,44 @@
 					"response": []
 				},
 				{
+				"name": "Get Package By ID",
+				"request": {
+					"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+						"key": "token",
+						"value": "{{userToken}}",
+						"type": "string"
+						}
+					]
+					},
+					"method": "GET",
+					"header": [],
+					"url": {
+					"raw": "{{baseUrl}}/be/api/packages/:id",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"be",
+						"api",
+						"packages",
+						":id"
+					],
+					"variable": [
+						{
+						"key": "id",
+						"value": "PACKAGE_ID",
+						"description": "Package's MongoDB ID"
+						}
+					]
+					},
+					"description": "Returns detailed information about a specific package, including its name, price, duration, associated category, and other attributes. Requires user authentication."
+				},
+				"response": []
+				},
+				{
 					"name": "Get Active Packages",
 					"request": {
 						"auth": {
