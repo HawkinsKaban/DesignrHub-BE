@@ -40,6 +40,7 @@ exports.createUserPayment = async (req, res) => {
         }
 
         // Apply voucher discount if provided
+        let appliedVoucherId = null;
         if (voucher_id) {
             try {
                 const voucherData = await VoucherModel.findById(voucher_id).session(session);
@@ -54,6 +55,7 @@ exports.createUserPayment = async (req, res) => {
                             discountAmount += voucherDiscount;
                             finalAmount -= voucherDiscount;
                         }
+                        appliedVoucherId = voucher_id;
                     }
                 }
             } catch (error) {
@@ -66,25 +68,71 @@ exports.createUserPayment = async (req, res) => {
 
         // Convert to cents for Polar (assuming IDR)
         const amountInCents = polarService.convertToCents(finalAmount);
+        
+        // Create metadata object without any null values
+        const metadata = {
+            user_id: req.user._id.toString(),
+            package_id: package._id.toString(),
+            invoice: invoice,
+            original_amount: originalAmount,
+            discount_amount: discountAmount
+        };
 
-        // Prepare checkout data for Polar
+        // Only add these fields if they have values
+        if (appliedVoucherId) {
+            metadata.voucher_id = appliedVoucherId;
+        }
+        
+        if (afiliator_id) {
+            metadata.afiliator_id = afiliator_id.toString();
+        }
+
+        // Check if we have a Polar product ID for this package
+        if (!package.polar_product_id) {
+            // If not, we need to create one
+            try {
+                console.log("Creating Polar product for package:", package.packageName);
+                const polarProduct = await polarService.createProduct(package);
+                
+                // Update package with the new Polar product ID
+                package.polar_product_id = polarProduct.id;
+                package.polar_metadata = polarProduct;
+                await package.save({ session });
+                
+                console.log("Polar product created:", polarProduct.id);
+            } catch (productError) {
+                console.error("Error creating Polar product:", productError);
+                throw new Error(`Failed to create Polar product: ${productError.message}`);
+            }
+        }
+
+        // Get the price ID from the polar_metadata if available
+        let productPriceId = null;
+        if (package.polar_metadata && package.polar_metadata.prices && package.polar_metadata.prices.length > 0) {
+            productPriceId = package.polar_metadata.prices[0].id;
+        }
+
+        // Prepare checkout data for Polar with correct product structure
         const checkoutData = {
-            products: [package._id.toString()], // We'll need to create products in Polar first
             customer_email: req.user.email,
             customer_name: req.user.username,
             customer_external_id: req.user._id.toString(),
             amount: amountInCents,
             success_url: `${process.env.FE_URL}payment/success?checkout_id={CHECKOUT_ID}`,
-            metadata: {
-                user_id: req.user._id.toString(),
-                package_id: package._id.toString(),
-                invoice: invoice,
-                voucher_id: voucher_id || null,
-                afiliator_id: afiliator_id || null,
-                original_amount: originalAmount,
-                discount_amount: discountAmount
-            }
+            metadata: metadata,
+            product_prices: []
         };
+
+        // If we have a product price ID, use it
+        if (package.polar_product_id && productPriceId) {
+            checkoutData.product_prices = [{
+                product_id: package.polar_product_id,
+                price_id: productPriceId
+            }];
+        } else {
+            // Otherwise, just use the amount directly (one-time payment)
+            checkoutData.amount = amountInCents;
+        }
 
         // Create checkout session with Polar
         const polarCheckout = await polarService.createCheckout(checkoutData);
@@ -108,8 +156,8 @@ exports.createUserPayment = async (req, res) => {
             discount_amount: discountAmount,
             checkout_url: polarCheckout.url,
             invoice,
-            voucher_id,
-            afiliator_id,
+            voucher_id: appliedVoucherId,
+            afiliator_id: afiliator_id || undefined, // Use undefined instead of null
             polar_metadata: polarCheckout,
             currency: "IDR"
         });
