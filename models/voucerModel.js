@@ -10,10 +10,15 @@ const VoucherSchema = new mongoose.Schema({
     endDate: { type: Date, required: true },
     status: { type: String, enum: ['open', 'close'], default: 'open' },
     code: { type: String, required: true },
-    isArchived: { type: Boolean, default: false }
+    isArchived: { type: Boolean, default: false },
+    // Polar integration fields
+    polar_discount_id: { type: String, required: false },
+    polar_metadata: { type: Object, default: {} }
 }, { timestamps: true });
 
 VoucherSchema.index({ packageId: 1 });
+VoucherSchema.index({ code: 1 }, { unique: true });
+VoucherSchema.index({ polar_discount_id: 1 }, { sparse: true });
 
 const Voucher = mongoose.model('Voucher', VoucherSchema);
 

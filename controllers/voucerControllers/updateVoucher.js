@@ -44,18 +44,20 @@ exports.updateVoucher = async (req, res) => {
             }
         }
 
+        const updateData = {
+            startDate: startDate || existingVoucher.startDate,
+            endDate: endDate || existingVoucher.endDate,
+            name: name || existingVoucher.name,
+            packageId: packageId || existingVoucher.packageId,
+            discount: discount || existingVoucher.discount,
+            discountType: discountType || existingVoucher.discountType,
+            status: status !== undefined ? status : existingVoucher.status,
+            code: code || existingVoucher.code,
+        };
+
         const updatedVoucher = await VoucherModel.findByIdAndUpdate(
             voucherId,
-            {
-                startDate: startDate || existingVoucher.startDate,
-                endDate: endDate || existingVoucher.endDate,
-                name: name || existingVoucher.name,
-                packageId: packageId || existingVoucher.packageId,
-                discount: discount || existingVoucher.discount,
-                discountType: discountType || existingVoucher.discountType,
-                status: status !== undefined ? status : existingVoucher.status,
-                code: code || existingVoucher.code,
-            },
+            updateData,
             { new: true, session }
         );
 
@@ -83,7 +85,7 @@ exports.updateVoucher = async (req, res) => {
             }
         } 
         // Create new Polar discount if it doesn't exist and voucher is active
-        else if (status === 'open' || !status) {
+        else if (updatedVoucher.status === 'open') {
             try {
                 const polarDiscount = await polarService.createDiscount(updatedVoucher);
                 
@@ -98,7 +100,7 @@ exports.updateVoucher = async (req, res) => {
             }
         }
         // Archive Polar discount if voucher is no longer active
-        else if (status === 'close' && existingVoucher.polar_discount_id) {
+        else if (updatedVoucher.status === 'close' && existingVoucher.polar_discount_id) {
             try {
                 await polarService.archiveDiscount(existingVoucher.polar_discount_id);
                 console.log(`✅ Voucher archived in Polar: ${name} (ID: ${existingVoucher.polar_discount_id})`);

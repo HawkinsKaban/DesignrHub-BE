@@ -2,12 +2,61 @@ const { Polar } = require('@polar-sh/sdk');
 const crypto = require('crypto');
 require('dotenv').config();
 
+// Add debug logs for initialization
+console.log('Initializing Polar service...');
+console.log(`POLAR_ACCESS_TOKEN exists: ${!!process.env.POLAR_ACCESS_TOKEN}`);
+console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
+
 class PolarService {
     constructor() {
-        this.client = new Polar({
-            accessToken: process.env.POLAR_ACCESS_TOKEN,
-            server: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox'
-        });
+        try {
+            this.client = new Polar({
+                accessToken: process.env.POLAR_ACCESS_TOKEN,
+                server: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox'
+            });
+            console.log('✅ Polar client initialized successfully');
+            
+            // Log available methods for debugging
+            console.log('Available customer methods:', Object.keys(this.client.customers));
+            console.log('Available product methods:', Object.keys(this.client.products));
+        } catch (error) {
+            console.error('❌ Failed to initialize Polar client:', error);
+            // Create a dummy client to prevent crashes
+            this.client = {
+                customers: { 
+                    create: async () => ({ id: 'dummy-customer-id' }),
+                    get: async () => ({}),
+                    list: async () => ({ items: [] })
+                },
+                products: { 
+                    create: async () => ({ id: 'dummy-product-id', prices: [] }),
+                    update: async () => ({}),
+                    get: async () => ({ prices: [] }),
+                    archive: async () => ({})
+                },
+                prices: {
+                    create: async () => ({}),
+                    update: async () => ({}),
+                    archive: async () => ({})
+                },
+                checkouts: { 
+                    create: async () => ({ id: 'dummy-checkout-id', url: '#' }),
+                    get: async () => ({})
+                },
+                orders: {
+                    get: async () => ({})
+                },
+                discounts: {
+                    create: async () => ({ id: 'dummy-discount-id' }),
+                    update: async () => ({}),
+                    archive: async () => ({})
+                },
+                subscriptions: {
+                    get: async () => ({}),
+                    cancel: async () => ({})
+                }
+            };
+        }
     }
 
     /**
@@ -33,14 +82,16 @@ class PolarService {
                 customerData.metadata.phone = userData.nomor;
             }
 
-            const response = await this.client.customers.upsert(customerData);
-            console.log(`✅ Polar customer created/updated: ${response.id}`);
+            // Use create instead of upsert 
+            const response = await this.client.customers.create(customerData);
+            console.log(`✅ Polar customer created: ${response.id}`);
             return response;
         } catch (error) {
             console.error("❌ Error creating/updating Polar customer:", error.response?.data || error.message);
             throw new Error(`Failed to create/update customer: ${error.response?.data?.message || error.message}`);
         }
     }
+    
     async getCustomer(customerId) {
         try {
             return await this.client.customers.get(customerId);
@@ -71,22 +122,40 @@ class PolarService {
     async createProduct(packageData) {
         try {
             // Determine recurring interval based on package duration
+            // This is required by Polar API
             const recurringInterval = packageData.durationInDays <= 60 ? 'month' : 'year';
             
             // Convert price to cents (Polar expects cents)
             const priceInCents = this.convertToCents(packageData.price);
-            const discountPriceInCents = packageData.discountPrice ? 
-                this.convertToCents(packageData.discountPrice) : null;
+            
+            // Fixed: Only include one price as required by Polar API
+            // If there's a discount, use that as the price, otherwise use the regular price
+            const useDiscountedPrice = packageData.onDiscount && 
+                                      packageData.discountPrice && 
+                                      packageData.endDiscountDate > new Date();
+                                      
+            const finalPriceInCents = useDiscountedPrice ? 
+                this.convertToCents(packageData.discountPrice) : 
+                priceInCents;
             
             const productData = {
                 name: packageData.packageName,
                 description: `${packageData.packageName} - ${packageData.durationName}`,
+                // Add required recurringInterval field
                 recurringInterval: recurringInterval,
                 prices: [
                     {
                         type: "one_time", 
-                        price_amount: priceInCents,
-                        price_currency: "IDR"
+                        price_amount: finalPriceInCents,
+                        price_currency: "IDR",
+                        // If using discounted price, include that in metadata
+                        ...(useDiscountedPrice && {
+                            metadata: {
+                                original_price: priceInCents,
+                                discount_ends: packageData.endDiscountDate ? 
+                                    new Date(packageData.endDiscountDate).toISOString() : null
+                            }
+                        })
                     }
                 ],
                 benefits: [
@@ -103,23 +172,17 @@ class PolarService {
                     package_id: packageData._id.toString(),
                     duration_days: packageData.durationInDays,
                     priority: packageData.priority || 0,
-                    platform: 'designrhub'
+                    platform: 'designrhub',
+                    // Store discount info in metadata
+                    has_discount: useDiscountedPrice,
+                    regular_price: priceInCents,
+                    ...(useDiscountedPrice && {
+                        discount_price: this.convertToCents(packageData.discountPrice),
+                        discount_ends: packageData.endDiscountDate ? 
+                            new Date(packageData.endDiscountDate).toISOString() : null
+                    })
                 }
             };
-
-            // If there's a discount, add a second price
-            if (discountPriceInCents) {
-                productData.prices.push({
-                    type: "one_time",
-                    price_amount: discountPriceInCents,
-                    price_currency: "IDR",
-                    metadata: {
-                        is_discount: true,
-                        end_date: packageData.endDiscountDate ? 
-                            new Date(packageData.endDiscountDate).toISOString() : null
-                    }
-                });
-            }
 
             console.log("Creating Polar product:", JSON.stringify(productData, null, 2));
             
@@ -137,16 +200,36 @@ class PolarService {
             // Fetch existing product first
             const existingProduct = await this.client.products.get(productId);
             
+            // Determine recurring interval based on package duration
+            const recurringInterval = packageData.durationInDays <= 60 ? 'month' : 'year';
+            
+            // Convert price to cents (Polar expects cents)
+            const priceInCents = this.convertToCents(packageData.price);
+            
+            // Determine if discount should be applied
+            const useDiscountedPrice = packageData.onDiscount && 
+                                      packageData.discountPrice && 
+                                      packageData.endDiscountDate > new Date();
+            
             // Prepare update data
             const updateData = {
                 name: packageData.packageName,
                 description: `${packageData.packageName} - ${packageData.durationName}`,
+                recurringInterval: recurringInterval,
                 metadata: {
                     ...existingProduct.metadata,
                     package_id: packageData._id.toString(),
                     duration_days: packageData.durationInDays,
                     priority: packageData.priority || 0,
-                    updated_at: new Date().toISOString()
+                    updated_at: new Date().toISOString(),
+                    // Store discount info in metadata
+                    has_discount: useDiscountedPrice,
+                    regular_price: priceInCents,
+                    ...(useDiscountedPrice && {
+                        discount_price: this.convertToCents(packageData.discountPrice),
+                        discount_ends: packageData.endDiscountDate ? 
+                            new Date(packageData.endDiscountDate).toISOString() : null
+                    })
                 }
             };
             
@@ -168,59 +251,38 @@ class PolarService {
         try {
             // Get all prices for this product
             const product = await this.client.products.get(productId);
-            const prices = product.prices || [];
-            
-            // Convert prices to cents
-            const priceInCents = this.convertToCents(packageData.price);
-            const discountPriceInCents = packageData.discountPrice ? 
-                this.convertToCents(packageData.discountPrice) : null;
-            
-            // Update or create main price
-            let mainPrice = prices.find(p => !p.metadata?.is_discount);
-            if (mainPrice) {
-                // Update existing price
-                await this.client.prices.update(mainPrice.id, {
-                    price_amount: priceInCents
-                });
-            } else {
-                // Create new price
-                await this.client.prices.create(productId, {
-                    type: "one_time",
-                    price_amount: priceInCents,
-                    price_currency: "IDR"
-                });
+            if (!product.prices || product.prices.length === 0) {
+                throw new Error("No prices found for product");
             }
             
-            // Handle discount price
-            let discountPrice = prices.find(p => p.metadata?.is_discount);
-            if (discountPriceInCents) {
-                if (discountPrice) {
-                    // Update existing discount price
-                    await this.client.prices.update(discountPrice.id, {
-                        price_amount: discountPriceInCents,
-                        metadata: {
-                            is_discount: true,
-                            end_date: packageData.endDiscountDate ? 
-                                new Date(packageData.endDiscountDate).toISOString() : null
-                        }
-                    });
-                } else {
-                    // Create new discount price
-                    await this.client.prices.create(productId, {
-                        type: "one_time",
-                        price_amount: discountPriceInCents,
-                        price_currency: "IDR",
-                        metadata: {
-                            is_discount: true,
-                            end_date: packageData.endDiscountDate ? 
-                                new Date(packageData.endDiscountDate).toISOString() : null
-                        }
-                    });
+            // Get the main price (first price)
+            const mainPrice = product.prices[0];
+            if (!mainPrice || !mainPrice.id) {
+                throw new Error("Invalid price data for product");
+            }
+            
+            // Determine which price to use
+            const useDiscountedPrice = packageData.onDiscount && 
+                                      packageData.discountPrice && 
+                                      packageData.endDiscountDate > new Date();
+                                      
+            const finalPriceInCents = useDiscountedPrice ? 
+                this.convertToCents(packageData.discountPrice) : 
+                this.convertToCents(packageData.price);
+            
+            // Update the price
+            await this.client.prices.update(mainPrice.id, {
+                price_amount: finalPriceInCents,
+                metadata: {
+                    ...(mainPrice.metadata || {}),
+                    // If using discounted price, include that in metadata
+                    ...(useDiscountedPrice && {
+                        original_price: this.convertToCents(packageData.price),
+                        discount_ends: packageData.endDiscountDate ? 
+                            new Date(packageData.endDiscountDate).toISOString() : null
+                    })
                 }
-            } else if (discountPrice) {
-                // Archive discount price if it exists but shouldn't
-                await this.client.prices.archive(discountPrice.id);
-            }
+            });
             
             return true;
         } catch (error) {
@@ -275,13 +337,16 @@ class PolarService {
                 customer_id: customer?.id,
                 customer_email: checkoutData.customer_email,
                 customer_name: checkoutData.customer_name,
-                customer_external_id: checkoutData.customer_external_id,
                 success_url: checkoutData.success_url,
                 cancel_url: checkoutData.cancel_url || process.env.FE_URL,
                 metadata: checkoutData.metadata || {},
-                amount: checkoutData.amount,
-                currency: "IDR"
             };
+            
+            // If there's an amount without product_prices, use it as a custom amount checkout
+            if (checkoutData.amount && (!checkoutData.product_prices || !checkoutData.product_prices.length)) {
+                formattedCheckoutData.amount = checkoutData.amount;
+                formattedCheckoutData.currency = "IDR";
+            }
             
             // Include products if provided
             if (checkoutData.product_prices && checkoutData.product_prices.length > 0) {
@@ -486,4 +551,6 @@ class PolarService {
     }
 }
 
-module.exports = new PolarService();
+// Create and export a singleton instance
+const polarService = new PolarService();
+module.exports = polarService;
