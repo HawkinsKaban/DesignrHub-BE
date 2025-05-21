@@ -5,8 +5,7 @@ const { generateVerifEmail } = require("../../utils/bodyEmail");
 const { sendEmail } = require("../../utils/sendEmail");
 const { errorLogs } = require("../../utils/errorLogs")
 const { generateToken } = require("../../utils/generateToken");
-
-
+const polarService = require("../../services/polarService");
 
 exports.registerUser = async (req, res) => {
     const { username, email, password, nomor, language } = req.body;
@@ -32,6 +31,26 @@ exports.registerUser = async (req, res) => {
 
         user = new UserModel({ username, email, password, nomor });
         const createdUser = await user.save({ session });
+
+        // Create customer in Polar
+        try {
+            const polarCustomer = await polarService.createOrUpdateCustomer({
+                _id: createdUser._id,
+                email: createdUser.email,
+                username: createdUser.username,
+                nomor: createdUser.nomor
+            });
+            
+            // Store Polar customer ID in user object
+            createdUser.polarCustomerId = polarCustomer.id;
+            await createdUser.save({ session });
+            
+            console.log(`✅ User registered with Polar customer ID: ${polarCustomer.id}`);
+        } catch (polarError) {
+            console.error(`⚠️ Error creating Polar customer: ${polarError.message}`);
+            // Don't fail registration if Polar integration fails
+            // We can sync later via background job
+        }
 
         const token = generateToken(createdUser._id);
         const verificationUrl = `${process.env.BE_URL}be/api/auth/verify/${token}`;

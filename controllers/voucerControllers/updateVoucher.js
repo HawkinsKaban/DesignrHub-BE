@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const VoucherModel = require("../../models/voucerModel");
 const PackageModel = require("../../models/packageModel");
 const moment = require("moment-timezone");
+const polarService = require("../../services/polarService");
 const { errorLogs } = require("../../utils/errorLogs");
 
 exports.updateVoucher = async (req, res) => {
@@ -64,15 +65,58 @@ exports.updateVoucher = async (req, res) => {
             return res.status(500).json({ message: "Gagal memperbarui voucher." });
         }
 
+        // Sync with Polar if discount ID exists
+        if (existingVoucher.polar_discount_id) {
+            try {
+                const polarDiscount = await polarService.updateDiscount(
+                    existingVoucher.polar_discount_id, 
+                    updatedVoucher
+                );
+                
+                updatedVoucher.polar_metadata = polarDiscount;
+                await updatedVoucher.save({ session });
+                
+                console.log(`✅ Voucher updated in Polar: ${name} (ID: ${polarDiscount.id})`);
+            } catch (polarError) {
+                console.error(`⚠️ Failed to update voucher in Polar: ${polarError.message}`);
+                // Don't fail voucher update if Polar sync fails
+            }
+        } 
+        // Create new Polar discount if it doesn't exist and voucher is active
+        else if (status === 'open' || !status) {
+            try {
+                const polarDiscount = await polarService.createDiscount(updatedVoucher);
+                
+                updatedVoucher.polar_discount_id = polarDiscount.id;
+                updatedVoucher.polar_metadata = polarDiscount;
+                await updatedVoucher.save({ session });
+                
+                console.log(`✅ Voucher created in Polar: ${name} (ID: ${polarDiscount.id})`);
+            } catch (polarError) {
+                console.error(`⚠️ Failed to create voucher in Polar: ${polarError.message}`);
+                // Don't fail voucher update if Polar creation fails
+            }
+        }
+        // Archive Polar discount if voucher is no longer active
+        else if (status === 'close' && existingVoucher.polar_discount_id) {
+            try {
+                await polarService.archiveDiscount(existingVoucher.polar_discount_id);
+                console.log(`✅ Voucher archived in Polar: ${name} (ID: ${existingVoucher.polar_discount_id})`);
+            } catch (polarError) {
+                console.error(`⚠️ Failed to archive voucher in Polar: ${polarError.message}`);
+                // Don't fail voucher update if Polar archival fails
+            }
+        }
+
         await session.commitTransaction();
+        session.endSession();
+
         res.status(200).json({ message: "Voucher berhasil diperbarui!", data: updatedVoucher });
 
     } catch (error) {
         await session.abortTransaction();
+        session.endSession();
         errorLogs(req, res, error.message, "controllers/voucherControllers/updateVoucher.js");
         res.status(500).json({ message: "Server error", error: error.message });
-
-    } finally {
-        session.endSession();
     }
 };
