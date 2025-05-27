@@ -1,7 +1,6 @@
 const mongoose = require("mongoose");
 const VoucherModel = require("../../models/voucerModel");
 const PackageModel = require("../../models/packageModel");
-const moment = require("moment-timezone"); // Tidak digunakan jika sudah pakai new Date()
 const polarService = require("../../services/polarService");
 const { errorLogs } = require("../../utils/errorLogs");
 
@@ -11,7 +10,20 @@ exports.updateVoucher = async (req, res) => {
 
     try {
         const voucherId = req.params.id;
-        let { startDate, endDate, name, packageId, discount, discountType, status, code, usageLimit, minimumPurchaseAmount } = req.body;
+        let { 
+            startDate, 
+            endDate, 
+            name, 
+            packageId, 
+            discount, 
+            discountType, 
+            status, 
+            code, 
+            usageLimit, 
+            minimumPurchaseAmount,
+            polarDurationType, // <-- Tambahkan ini dari req.body
+            polarDurationInMonths // <-- Tambahkan ini dari req.body
+        } = req.body;
         console.log(`[UpdateVoucher] Attempting to update voucher ID: ${voucherId}`);
 
         if (packageId && !Array.isArray(packageId)) {
@@ -64,7 +76,7 @@ exports.updateVoucher = async (req, res) => {
                 validPackageIds.push(existingPackage._id);
             }
             existingVoucher.packageId = validPackageIds;
-        } else if (packageId && packageId.length === 0) { // Eksplisit array kosong untuk menghapus semua paket
+        } else if (packageId && packageId.length === 0) { 
             existingVoucher.packageId = [];
         }
 
@@ -91,7 +103,22 @@ exports.updateVoucher = async (req, res) => {
         if (status !== undefined) existingVoucher.status = status;
         if (usageLimit !== undefined) existingVoucher.usageLimit = usageLimit != null ? parseInt(usageLimit) : null;
         if (minimumPurchaseAmount !== undefined) existingVoucher.minimumPurchaseAmount = minimumPurchaseAmount != null ? parseFloat(minimumPurchaseAmount) : 0;
-        // timesUsed tidak diupdate dari sini, itu diupdate saat voucher digunakan
+        
+        // Update Polar duration fields
+        if (polarDurationType !== undefined) existingVoucher.polarDurationType = polarDurationType;
+        if (polarDurationType === 'repeating') {
+            if (polarDurationInMonths !== undefined && parseInt(polarDurationInMonths) > 0) {
+                existingVoucher.polarDurationInMonths = parseInt(polarDurationInMonths);
+            } else if (existingVoucher.polarDurationType === 'repeating' && (existingVoucher.polarDurationInMonths == null || existingVoucher.polarDurationInMonths <= 0)) {
+                // If it was already repeating but new months are invalid, or if changing to repeating without valid months
+                await session.abortTransaction();
+                session.endSession();
+                return res.status(400).json({ message: "For 'repeating' duration, 'polarDurationInMonths' is required and must be a positive number." });
+            }
+        } else {
+            existingVoucher.polarDurationInMonths = undefined; // Hapus jika bukan repeating
+        }
+
 
         await existingVoucher.save({ session });
         console.log(`[UpdateVoucher] Voucher ${existingVoucher.name} (ID: ${voucherId}) updated in DB.`);
@@ -112,7 +139,7 @@ exports.updateVoucher = async (req, res) => {
                     console.error(`[UpdateVoucher] ⚠️ Failed to update Polar discount ${existingVoucher.polar_discount_id}: ${polarError.message}`);
                     errorLogs(req, res, `Polar discount update failed for voucher ${existingVoucher.name}: ${polarError.message}`, "controllers/voucerControllers/updateVoucher.js (Polar Update)");
                 }
-            } else { // status open tapi tidak ada polar_id, coba buat baru
+            } else { 
                 try {
                     console.log(`[UpdateVoucher] Creating new Polar discount for active voucher ${existingVoucher.name} as it was not synced before.`);
                     polarDiscount = await polarService.createDiscount(existingVoucher);
@@ -127,14 +154,10 @@ exports.updateVoucher = async (req, res) => {
                 }
             }
         } else if (existingVoucher.status === 'close' && previousStatus === 'open' && existingVoucher.polar_discount_id) {
-            // Jika voucher ditutup dan sebelumnya open serta memiliki ID Polar
             try {
                 console.log(`[UpdateVoucher] Archiving Polar discount ID: ${existingVoucher.polar_discount_id} as voucher ${existingVoucher.name} is now closed.`);
                 await polarService.archiveDiscount(existingVoucher.polar_discount_id);
                 polarAction = "archived";
-                // existingVoucher.polar_discount_id = null; // Pertimbangkan apakah akan menghapus ID setelah arsip
-                // existingVoucher.polar_metadata = {};
-                // await existingVoucher.save({ session });
                 console.log(`[UpdateVoucher] ✅ Polar discount ${existingVoucher.polar_discount_id} archived.`);
             } catch (polarError) {
                 console.error(`[UpdateVoucher] ⚠️ Failed to archive Polar discount ${existingVoucher.polar_discount_id}: ${polarError.message}`);
