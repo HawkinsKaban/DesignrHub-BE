@@ -38,12 +38,12 @@ exports.createUserPayment = async (req, res) => {
         if (packageDetails.onDiscount && packageDetails.discountPrice != null && parseFloat(packageDetails.discountPrice) >=0 && new Date(packageDetails.endDiscountDate) > new Date()) {
             const discountPriceUSD = parseFloat(packageDetails.discountPrice);
             if (!isNaN(discountPriceUSD)) {
-                packageDiscountAmountUSD = Math.max(0, originalAmountUSD - discountPriceUSD); // Diskon tidak boleh membuat harga negatif
+                packageDiscountAmountUSD = Math.max(0, originalAmountUSD - discountPriceUSD);
                 finalAmountUSD = discountPriceUSD;
                 console.log(`[CreatePayment] Applied package discount. Original: ${originalAmountUSD}, Discounted: ${finalAmountUSD}`);
             }
         }
-        
+
         let totalDiscountAmountUSD = packageDiscountAmountUSD;
         let appliedVoucherId = null;
         let voucherCodeForPolar = null;
@@ -54,7 +54,7 @@ exports.createUserPayment = async (req, res) => {
                 console.log(`[CreatePayment] Found active voucher: ${voucherData.name} (ID: ${voucherData._id})`);
                 if (voucherData.usageLimit !== null && voucherData.timesUsed >= voucherData.usageLimit) {
                     console.log(`[CreatePayment] Voucher ${voucher_code} has reached its usage limit.`);
-                } else if (finalAmountUSD < voucherData.minimumPurchaseAmount) { // Periksa terhadap finalAmountUSD saat ini
+                } else if (finalAmountUSD < voucherData.minimumPurchaseAmount) {
                     console.log(`[CreatePayment] Purchase amount ${finalAmountUSD} USD is less than minimum ${voucherData.minimumPurchaseAmount} USD for voucher ${voucher_code}.`);
                 } else if (voucherData.packageId && voucherData.packageId.length > 0 && !voucherData.packageId.some(id => id.equals(packageDetails._id))) {
                     console.log(`[CreatePayment] Voucher ${voucher_code} does not apply to package ${packageDetails._id}.`);
@@ -63,14 +63,14 @@ exports.createUserPayment = async (req, res) => {
                     if (voucherData.discountType === "percentage") {
                         const discountValue = parseFloat(voucherData.discount);
                         if(!isNaN(discountValue)) voucherDiscountUSD = (finalAmountUSD * discountValue) / 100;
-                    } else { // fixed
+                    } else { 
                         const discountValue = parseFloat(voucherData.discount);
                         if(!isNaN(discountValue)) voucherDiscountUSD = discountValue;
                     }
-                    voucherDiscountUSD = Math.max(0, Math.min(voucherDiscountUSD, finalAmountUSD)); // Diskon tidak boleh > harga saat ini, dan tidak negatif
-                    
+                    voucherDiscountUSD = Math.max(0, Math.min(voucherDiscountUSD, finalAmountUSD));
+
                     finalAmountUSD -= voucherDiscountUSD;
-                    totalDiscountAmountUSD += voucherDiscountUSD; // Akumulasi total diskon
+                    totalDiscountAmountUSD += voucherDiscountUSD;
                     appliedVoucherId = voucherData._id;
                     voucherCodeForPolar = voucherData.code;
                     console.log(`[CreatePayment] Applied voucher ${voucher_code}. Discount Value: ${voucherDiscountUSD} USD. New final amount: ${finalAmountUSD} USD`);
@@ -80,14 +80,14 @@ exports.createUserPayment = async (req, res) => {
             }
         }
 
-        finalAmountUSD = Math.max(finalAmountUSD, 0); // Pastikan tidak negatif
-        const amountInCents = Math.round(finalAmountUSD * 100); // Konversi ke cents
+        finalAmountUSD = Math.max(finalAmountUSD, 0); 
+        const amountInCents = Math.round(finalAmountUSD * 100); 
 
         const metadataForPolar = {
             user_id: req.user._id.toString(),
             package_id: packageDetails._id.toString(),
             invoice: invoice,
-            original_amount_usd: originalAmountUSD.toString(), // Kirim sebagai string untuk konsistensi metadata
+            original_amount_usd: originalAmountUSD.toString(), 
             total_discount_amount_usd: totalDiscountAmountUSD.toString(),
             final_amount_usd_calculated: finalAmountUSD.toString(),
             platform: 'designrhub'
@@ -105,7 +105,7 @@ exports.createUserPayment = async (req, res) => {
                 console.log(`[CreatePayment] Polar product ID not found for package ${packageDetails.packageName}. Creating Polar product...`);
                 const polarProduct = await polarService.createProduct(packageDetails);
                 packageDetails.polar_product_id = polarProduct.id;
-                packageDetails.polar_metadata = polarProduct; // Simpan metadata produk Polar
+                packageDetails.polar_metadata = polarProduct; 
                 await packageDetails.save({ session });
                 console.log(`[CreatePayment] Polar product created/updated: ${polarProduct.id}`);
             } catch (productError) {
@@ -113,8 +113,8 @@ exports.createUserPayment = async (req, res) => {
                 throw new Error(`Failed to sync package with payment provider: ${productError.message}`);
             }
         }
-        
-        const refreshedPackageDetails = await PackageModel.findById(package_id).session(session); // Ambil data terbaru
+
+        const refreshedPackageDetails = await PackageModel.findById(package_id).session(session); 
         let productPriceIdForPolar = null;
         if (refreshedPackageDetails.polar_metadata?.prices?.length > 0) {
             productPriceIdForPolar = refreshedPackageDetails.polar_metadata.prices[0].id;
@@ -123,40 +123,32 @@ exports.createUserPayment = async (req, res) => {
         }
 
         const checkoutPayloadForPolar = {
-            customer_email: req.user.email,
-            customer_name: req.user.username,
-            customer_external_id: req.user._id.toString(),
-            success_url: `${process.env.FE_URL}payment/success?checkout_id={CHECKOUT_ID}`, // Gunakan placeholder Polar
-            cancel_url: `${process.env.FE_URL}payment/cancelled?checkout_id={CHECKOUT_ID}`,
+            customerEmail: req.user.email,
+            customerName: req.user.username,
+            customerExternalId: req.user._id.toString(),
+            successUrl: `${process.env.FE_URL}payment/success?checkout_id={CHECKOUT_ID}`,
+            cancelUrl: `${process.env.FE_URL}payment/cancelled?checkout_id={CHECKOUT_ID}`,
             metadata: metadataForPolar,
-            currency: "USD", // Selalu USD
+            currency: "USD",
         };
-        
-        if (voucherCodeForPolar) { // Kirim kode voucher ke Polar jika ada
-            checkoutPayloadForPolar.discount_code = voucherCodeForPolar;
+
+        if (voucherCodeForPolar) { 
+            checkoutPayloadForPolar.discountCode = voucherCodeForPolar;
         }
 
         if (productPriceIdForPolar && refreshedPackageDetails.polar_product_id) {
-             checkoutPayloadForPolar.product_prices = [{
-                product_id: refreshedPackageDetails.polar_product_id,
-                price_id: productPriceIdForPolar
-            }];
-             console.log(`[CreatePayment] Using product_prices for checkout. Polar will calculate final amount with discount_code if provided.`);
-             // Jika product_prices digunakan, Polar biasanya menangani kalkulasi akhir.
-             // 'amount' mungkin tidak diperlukan atau bisa menyebabkan konflik jika discount_code juga ada.
-             // Namun, jika 'discount_code' tidak secara otomatis mengurangi 'product_prices' di sisi Polar,
-             // Anda mungkin perlu membuat 'price' baru yang sudah didiskon di Polar dan mereferensikannya.
-             // Atau, JANGAN gunakan product_prices dan hanya kirim 'amount' yang sudah didiskon.
-             // Untuk saat ini, kita coba dengan product_prices + discount_code.
+             // Corrected: products should be an array of price ID strings
+             checkoutPayloadForPolar.products = [productPriceIdForPolar];
+             console.log(`[CreatePayment] Using products (array of price IDs) for checkout. Price ID: ${productPriceIdForPolar}. Polar will calculate final amount with discountCode if provided.`);
         } else {
-            checkoutPayloadForPolar.amount = amountInCents; // amountInCents sudah final_amount * 100
+            checkoutPayloadForPolar.amount = amountInCents; 
             console.warn(`[CreatePayment] Using custom amount checkout for package ${package_id}. Amount: ${amountInCents} cents USD. Voucher (if any) already applied in this amount.`);
         }
 
         console.log("[CreatePayment] Creating Polar checkout session with payload:", JSON.stringify(checkoutPayloadForPolar, null, 2));
         const polarCheckout = await polarService.createCheckout(checkoutPayloadForPolar);
 
-        const expiredTime = polarCheckout.expires_at ? new Date(polarCheckout.expires_at) : new Date(Date.now() + (24 * 60 * 60 * 1000)); // Default 24jam jika Polar tidak memberi
+        const expiredTime = polarCheckout.expires_at ? new Date(polarCheckout.expires_at) : new Date(Date.now() + (24 * 60 * 60 * 1000)); 
 
         const newUserPayment = new PaymentModel({
             userId: req.user._id,
@@ -166,15 +158,15 @@ exports.createUserPayment = async (req, res) => {
             expired_time: expiredTime,
             polar_checkout_id: polarCheckout.id,
             reference: polarCheckout.id,
-            admin: 0, // Biaya admin mungkin ditangani Polar atau tidak relevan
-            amount: finalAmountUSD, // Jumlah akhir yang dibayar pengguna dalam USD
-            total: originalAmountUSD, // Harga asli paket dalam USD
-            discount_amount: totalDiscountAmountUSD, // Total diskon yang diterapkan dalam USD
+            admin: 0, 
+            amount: finalAmountUSD, 
+            total: originalAmountUSD, 
+            discount_amount: totalDiscountAmountUSD, 
             checkout_url: polarCheckout.url,
             invoice,
             voucher_id: appliedVoucherId,
             afiliator_id: afiliator_id || undefined,
-            polar_metadata: polarCheckout, // Simpan respons checkout Polar
+            polar_metadata: polarCheckout, 
             currency: "USD"
         });
 
@@ -188,7 +180,7 @@ exports.createUserPayment = async (req, res) => {
             message: "Checkout session created successfully with Polar",
             checkout_url: polarCheckout.url,
             checkout_id: polarCheckout.id,
-            expires_at: polarCheckout.expires_at, // Dari respons Polar
+            expires_at: polarCheckout.expires_at, 
             total_amount_usd: finalAmountUSD,
             invoice: invoice
         });
