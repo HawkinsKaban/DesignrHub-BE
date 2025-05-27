@@ -7,172 +7,189 @@ const polarService = require("../../services/polarService");
 require("dotenv").config();
 
 exports.createUserPayment = async (req, res) => {
-    const { package_id, voucher_id, afiliator_id } = req.body;
+    const { package_id, voucher_code, afiliator_id } = req.body;
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
-        // Get package details
-        const package = await PackageModel.findById(package_id).session(session);
-        if (!package) {
+        console.log(`[CreatePayment] User ${req.user._id} initiating payment for package ${package_id} with voucher code ${voucher_code}`);
+        const packageDetails = await PackageModel.findById(package_id).session(session);
+        if (!packageDetails) {
             await session.abortTransaction();
             session.endSession();
+            console.warn(`[CreatePayment] Package not found: ${package_id}`);
             return res.status(404).json({ message: "Package not found" });
         }
 
-        // Generate invoice number
         const countPayment = await PaymentModel.countDocuments().session(session);
         const hariIni = new Date();
         const hari = String(hariIni.getDate()).padStart(2, "0");
         const bulan = String(hariIni.getMonth() + 1).padStart(2, "0");
         const invoice = `INV${hari}${bulan}${hariIni.getFullYear()}${countPayment + 1}`;
 
-        // Calculate amount with discounts
-        let originalAmount = package.price;
-        let discountAmount = 0;
-        let finalAmount = originalAmount;
-
-        // Apply package discount if available
-        if (package.onDiscount && package.discountPrice && package.endDiscountDate > new Date()) {
-            const packageDiscount = originalAmount - package.discountPrice;
-            discountAmount += packageDiscount;
-            finalAmount = package.discountPrice;
+        let originalAmountUSD = parseFloat(packageDetails.price);
+        if (isNaN(originalAmountUSD) || originalAmountUSD < 0) {
+            await session.abortTransaction(); session.endSession();
+            throw new Error("Package price is not a valid non-negative number.");
         }
+        let packageDiscountAmountUSD = 0;
+        let finalAmountUSD = originalAmountUSD;
 
-        // Apply voucher discount if provided
+        if (packageDetails.onDiscount && packageDetails.discountPrice != null && parseFloat(packageDetails.discountPrice) >=0 && new Date(packageDetails.endDiscountDate) > new Date()) {
+            const discountPriceUSD = parseFloat(packageDetails.discountPrice);
+            if (!isNaN(discountPriceUSD)) {
+                packageDiscountAmountUSD = Math.max(0, originalAmountUSD - discountPriceUSD); // Diskon tidak boleh membuat harga negatif
+                finalAmountUSD = discountPriceUSD;
+                console.log(`[CreatePayment] Applied package discount. Original: ${originalAmountUSD}, Discounted: ${finalAmountUSD}`);
+            }
+        }
+        
+        let totalDiscountAmountUSD = packageDiscountAmountUSD;
         let appliedVoucherId = null;
-        if (voucher_id) {
-            try {
-                const voucherData = await VoucherModel.findById(voucher_id).session(session);
-                if (voucherData && voucherData.status === 'open' && new Date(voucherData.endDate) > new Date()) {
-                    if (Array.isArray(voucherData.packageId) && voucherData.packageId.includes(package._id)) {
-                        if (voucherData.discountType === "percentage") {
-                            const voucherDiscount = (finalAmount * parseFloat(voucherData.discount)) / 100;
-                            discountAmount += voucherDiscount;
-                            finalAmount -= voucherDiscount;
-                        } else {
-                            const voucherDiscount = parseFloat(voucherData.discount);
-                            discountAmount += voucherDiscount;
-                            finalAmount -= voucherDiscount;
-                        }
-                        appliedVoucherId = voucher_id;
+        let voucherCodeForPolar = null;
+
+        if (voucher_code) {
+            const voucherData = await VoucherModel.findOne({ code: voucher_code, status: 'open' }).session(session);
+            if (voucherData && new Date(voucherData.endDate) > new Date()) {
+                console.log(`[CreatePayment] Found active voucher: ${voucherData.name} (ID: ${voucherData._id})`);
+                if (voucherData.usageLimit !== null && voucherData.timesUsed >= voucherData.usageLimit) {
+                    console.log(`[CreatePayment] Voucher ${voucher_code} has reached its usage limit.`);
+                } else if (finalAmountUSD < voucherData.minimumPurchaseAmount) { // Periksa terhadap finalAmountUSD saat ini
+                    console.log(`[CreatePayment] Purchase amount ${finalAmountUSD} USD is less than minimum ${voucherData.minimumPurchaseAmount} USD for voucher ${voucher_code}.`);
+                } else if (voucherData.packageId && voucherData.packageId.length > 0 && !voucherData.packageId.some(id => id.equals(packageDetails._id))) {
+                    console.log(`[CreatePayment] Voucher ${voucher_code} does not apply to package ${packageDetails._id}.`);
+                } else {
+                    let voucherDiscountUSD = 0;
+                    if (voucherData.discountType === "percentage") {
+                        const discountValue = parseFloat(voucherData.discount);
+                        if(!isNaN(discountValue)) voucherDiscountUSD = (finalAmountUSD * discountValue) / 100;
+                    } else { // fixed
+                        const discountValue = parseFloat(voucherData.discount);
+                        if(!isNaN(discountValue)) voucherDiscountUSD = discountValue;
                     }
+                    voucherDiscountUSD = Math.max(0, Math.min(voucherDiscountUSD, finalAmountUSD)); // Diskon tidak boleh > harga saat ini, dan tidak negatif
+                    
+                    finalAmountUSD -= voucherDiscountUSD;
+                    totalDiscountAmountUSD += voucherDiscountUSD; // Akumulasi total diskon
+                    appliedVoucherId = voucherData._id;
+                    voucherCodeForPolar = voucherData.code;
+                    console.log(`[CreatePayment] Applied voucher ${voucher_code}. Discount Value: ${voucherDiscountUSD} USD. New final amount: ${finalAmountUSD} USD`);
                 }
-            } catch (error) {
-                console.error("Error applying voucher:", error);
+            } else {
+                console.log(`[CreatePayment] Voucher code ${voucher_code} not found or not active/expired.`);
             }
         }
 
-        // Ensure final amount is not negative
-        finalAmount = Math.max(finalAmount, 0);
+        finalAmountUSD = Math.max(finalAmountUSD, 0); // Pastikan tidak negatif
+        const amountInCents = Math.round(finalAmountUSD * 100); // Konversi ke cents
 
-        // Convert to cents for Polar (assuming IDR)
-        const amountInCents = polarService.convertToCents(finalAmount);
-        
-        // Create metadata object without any null values
-        const metadata = {
+        const metadataForPolar = {
             user_id: req.user._id.toString(),
-            package_id: package._id.toString(),
+            package_id: packageDetails._id.toString(),
             invoice: invoice,
-            original_amount: originalAmount,
-            discount_amount: discountAmount
+            original_amount_usd: originalAmountUSD.toString(), // Kirim sebagai string untuk konsistensi metadata
+            total_discount_amount_usd: totalDiscountAmountUSD.toString(),
+            final_amount_usd_calculated: finalAmountUSD.toString(),
+            platform: 'designrhub'
         };
 
-        // Only add these fields if they have values
         if (appliedVoucherId) {
-            metadata.voucher_id = appliedVoucherId;
+            metadataForPolar.voucher_id_internal = appliedVoucherId.toString();
         }
-        
         if (afiliator_id) {
-            metadata.afiliator_id = afiliator_id.toString();
+            metadataForPolar.afiliator_id = afiliator_id.toString();
         }
 
-        // Check if we have a Polar product ID for this package
-        if (!package.polar_product_id) {
-            // If not, we need to create one
+        if (!packageDetails.polar_product_id) {
             try {
-                console.log("Creating Polar product for package:", package.packageName);
-                const polarProduct = await polarService.createProduct(package);
-                
-                // Update package with the new Polar product ID
-                package.polar_product_id = polarProduct.id;
-                package.polar_metadata = polarProduct;
-                await package.save({ session });
-                
-                console.log("Polar product created:", polarProduct.id);
+                console.log(`[CreatePayment] Polar product ID not found for package ${packageDetails.packageName}. Creating Polar product...`);
+                const polarProduct = await polarService.createProduct(packageDetails);
+                packageDetails.polar_product_id = polarProduct.id;
+                packageDetails.polar_metadata = polarProduct; // Simpan metadata produk Polar
+                await packageDetails.save({ session });
+                console.log(`[CreatePayment] Polar product created/updated: ${polarProduct.id}`);
             } catch (productError) {
-                console.error("Error creating Polar product:", productError);
-                throw new Error(`Failed to create Polar product: ${productError.message}`);
+                console.error("[CreatePayment] Error creating/updating Polar product:", productError);
+                throw new Error(`Failed to sync package with payment provider: ${productError.message}`);
             }
         }
-
-        // Get the price ID from the polar_metadata if available
-        let productPriceId = null;
-        if (package.polar_metadata && package.polar_metadata.prices && package.polar_metadata.prices.length > 0) {
-            productPriceId = package.polar_metadata.prices[0].id;
+        
+        const refreshedPackageDetails = await PackageModel.findById(package_id).session(session); // Ambil data terbaru
+        let productPriceIdForPolar = null;
+        if (refreshedPackageDetails.polar_metadata?.prices?.length > 0) {
+            productPriceIdForPolar = refreshedPackageDetails.polar_metadata.prices[0].id;
+        } else {
+             console.warn(`[CreatePayment] Could not find price_id in polar_metadata for package ${refreshedPackageDetails._id}. Attempting custom amount checkout.`);
         }
 
-        // Prepare checkout data for Polar with correct product structure
-        const checkoutData = {
+        const checkoutPayloadForPolar = {
             customer_email: req.user.email,
             customer_name: req.user.username,
             customer_external_id: req.user._id.toString(),
-            amount: amountInCents,
-            success_url: `${process.env.FE_URL}payment/success?checkout_id={CHECKOUT_ID}`,
-            metadata: metadata,
-            product_prices: []
+            success_url: `${process.env.FE_URL}payment/success?checkout_id={CHECKOUT_ID}`, // Gunakan placeholder Polar
+            cancel_url: `${process.env.FE_URL}payment/cancelled?checkout_id={CHECKOUT_ID}`,
+            metadata: metadataForPolar,
+            currency: "USD", // Selalu USD
         };
-
-        // If we have a product price ID, use it
-        if (package.polar_product_id && productPriceId) {
-            checkoutData.product_prices = [{
-                product_id: package.polar_product_id,
-                price_id: productPriceId
-            }];
-        } else {
-            // Otherwise, just use the amount directly (one-time payment)
-            checkoutData.amount = amountInCents;
+        
+        if (voucherCodeForPolar) { // Kirim kode voucher ke Polar jika ada
+            checkoutPayloadForPolar.discount_code = voucherCodeForPolar;
         }
 
-        // Create checkout session with Polar
-        const polarCheckout = await polarService.createCheckout(checkoutData);
+        if (productPriceIdForPolar && refreshedPackageDetails.polar_product_id) {
+             checkoutPayloadForPolar.product_prices = [{
+                product_id: refreshedPackageDetails.polar_product_id,
+                price_id: productPriceIdForPolar
+            }];
+             console.log(`[CreatePayment] Using product_prices for checkout. Polar will calculate final amount with discount_code if provided.`);
+             // Jika product_prices digunakan, Polar biasanya menangani kalkulasi akhir.
+             // 'amount' mungkin tidak diperlukan atau bisa menyebabkan konflik jika discount_code juga ada.
+             // Namun, jika 'discount_code' tidak secara otomatis mengurangi 'product_prices' di sisi Polar,
+             // Anda mungkin perlu membuat 'price' baru yang sudah didiskon di Polar dan mereferensikannya.
+             // Atau, JANGAN gunakan product_prices dan hanya kirim 'amount' yang sudah didiskon.
+             // Untuk saat ini, kita coba dengan product_prices + discount_code.
+        } else {
+            checkoutPayloadForPolar.amount = amountInCents; // amountInCents sudah final_amount * 100
+            console.warn(`[CreatePayment] Using custom amount checkout for package ${package_id}. Amount: ${amountInCents} cents USD. Voucher (if any) already applied in this amount.`);
+        }
 
-        // Calculate expiration time (24 hours from now)
-        const expiredTime = new Date();
-        expiredTime.setHours(expiredTime.getHours() + 24);
+        console.log("[CreatePayment] Creating Polar checkout session with payload:", JSON.stringify(checkoutPayloadForPolar, null, 2));
+        const polarCheckout = await polarService.createCheckout(checkoutPayloadForPolar);
 
-        // Create payment record in our database
+        const expiredTime = polarCheckout.expires_at ? new Date(polarCheckout.expires_at) : new Date(Date.now() + (24 * 60 * 60 * 1000)); // Default 24jam jika Polar tidak memberi
+
         const newUserPayment = new PaymentModel({
             userId: req.user._id,
             userName: req.user.username,
-            package_id,
+            package_id: packageDetails._id,
             payment_time: Date.now(),
             expired_time: expiredTime,
             polar_checkout_id: polarCheckout.id,
-            reference: polarCheckout.id, // Store checkout ID as reference
-            admin: 0, // Polar handles fees
-            amount: finalAmount,
-            total: originalAmount,
-            discount_amount: discountAmount,
+            reference: polarCheckout.id,
+            admin: 0, // Biaya admin mungkin ditangani Polar atau tidak relevan
+            amount: finalAmountUSD, // Jumlah akhir yang dibayar pengguna dalam USD
+            total: originalAmountUSD, // Harga asli paket dalam USD
+            discount_amount: totalDiscountAmountUSD, // Total diskon yang diterapkan dalam USD
             checkout_url: polarCheckout.url,
             invoice,
             voucher_id: appliedVoucherId,
-            afiliator_id: afiliator_id || undefined, // Use undefined instead of null
-            polar_metadata: polarCheckout,
-            currency: "IDR"
+            afiliator_id: afiliator_id || undefined,
+            polar_metadata: polarCheckout, // Simpan respons checkout Polar
+            currency: "USD"
         });
 
         await newUserPayment.save({ session });
         await session.commitTransaction();
         session.endSession();
 
+        console.log(`[CreatePayment] Payment record created (ID: ${newUserPayment._id}), Polar checkout URL: ${polarCheckout.url}`);
         res.status(201).json({
             success: true,
-            message: "Checkout session created successfully",
+            message: "Checkout session created successfully with Polar",
             checkout_url: polarCheckout.url,
             checkout_id: polarCheckout.id,
-            expires_at: polarCheckout.expires_at,
-            total_amount: finalAmount,
+            expires_at: polarCheckout.expires_at, // Dari respons Polar
+            total_amount_usd: finalAmountUSD,
             invoice: invoice
         });
 
@@ -180,7 +197,7 @@ exports.createUserPayment = async (req, res) => {
         await session.abortTransaction();
         session.endSession();
 
-        console.error("Payment creation failed:", error);
+        console.error("[CreatePayment] ❌ Payment creation failed:", error);
         errorLogs(req, res, error.message, "controllers/paymentControllers/createPayment.js");
 
         res.status(500).json({
