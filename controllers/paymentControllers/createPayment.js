@@ -1,10 +1,10 @@
 const mongoose = require("mongoose");
-const VoucherModel = require("../../models/voucerModel"); //
-const PaymentModel = require("../../models/paymentModel"); //
-const PackageModel = require("../../models/packageModel"); //
-const { errorLogs } = require("../../utils/errorLogs"); //
-const polarService = require("../../services/polarService"); //
-require("dotenv").config(); //
+const VoucherModel = require("../../models/voucerModel");
+const PaymentModel = require("../../models/paymentModel");
+const PackageModel = require("../../models/packageModel");
+const { errorLogs } = require("../../utils/errorLogs");
+const polarService = require("../../services/polarService");
+require("dotenv").config();
 
 exports.createUserPayment = async (req, res) => {
     const { package_id, voucher_code, afiliator_id } = req.body;
@@ -14,6 +14,7 @@ exports.createUserPayment = async (req, res) => {
     try {
         console.log(`[CreatePayment] User ${req.user._id} initiating payment for package ${package_id} with voucher code ${voucher_code}`);
 
+        // --- FE_URL Validation (same as before) ---
         if (!process.env.FE_URL || process.env.FE_URL.trim() === '') {
             await session.abortTransaction(); session.endSession();
             console.error("[CreatePayment] FE_URL environment variable is not set or is empty.");
@@ -35,14 +36,10 @@ exports.createUserPayment = async (req, res) => {
             console.warn(`[CreatePayment] Package not found: ${package_id}`);
             return res.status(404).json({ message: "Package not found" });
         }
-        console.log(`[CreatePayment] Package found: ${packageDetails.packageName}, Local Polar Product ID: ${packageDetails.polar_product_id}`);
-        if (packageDetails.polar_metadata && packageDetails.polar_metadata.prices) {
-            console.log(`[CreatePayment] Local Polar Metadata Prices: `, JSON.stringify(packageDetails.polar_metadata.prices));
-        } else {
-            console.log(`[CreatePayment] No local Polar Metadata Prices found for package ${packageDetails._id}`);
-        }
+        console.log(`[CreatePayment] Package found: ${packageDetails.packageName}, DB Polar Product ID: ${packageDetails.polar_product_id}`);
 
 
+        // --- Invoice and Discount Calculation (same as before) ---
         const countPayment = await PaymentModel.countDocuments().session(session);
         const hariIni = new Date();
         const hari = String(hariIni.getDate()).padStart(2, "0");
@@ -69,7 +66,7 @@ exports.createUserPayment = async (req, res) => {
                     if (voucherData.discountType === "percentage") { const discountValue = parseFloat(voucherData.discount); if (!isNaN(discountValue)) voucherDiscountUSD = (finalAmountUSD * discountValue) / 100;
                     } else { const discountValue = parseFloat(voucherData.discount); if (!isNaN(discountValue)) voucherDiscountUSD = discountValue; }
                     voucherDiscountUSD = Math.max(0, Math.min(voucherDiscountUSD, finalAmountUSD)); finalAmountUSD -= voucherDiscountUSD; totalDiscountAmountUSD += voucherDiscountUSD; appliedVoucherId = voucherData._id; voucherCodeForPolar = voucherData.code; console.log(`[CreatePayment] Applied voucher ${voucher_code}. Discount Value: ${voucherDiscountUSD} USD. New final amount: ${finalAmountUSD} USD`);
-                } else { /* Logika untuk kondisi voucher tidak terpenuhi sudah ada di dalam blok if */ }
+                } else { console.log(`[CreatePayment] Voucher ${voucher_code} conditions not met.`); }
             } else { console.log(`[CreatePayment] Voucher code ${voucher_code} not found or not active/expired.`); }
         }
         finalAmountUSD = Math.max(finalAmountUSD, 0);
@@ -77,88 +74,140 @@ exports.createUserPayment = async (req, res) => {
         const metadataForPolar = { user_id: req.user._id.toString(), package_id: packageDetails._id.toString(), invoice: invoice, original_amount_usd: originalAmountUSD.toString(), total_discount_amount_usd: totalDiscountAmountUSD.toString(), final_amount_usd_calculated: finalAmountUSD.toString(), platform: 'designrhub'};
         if (appliedVoucherId) metadataForPolar.voucher_id_internal = appliedVoucherId.toString(); if (afiliator_id) metadataForPolar.afiliator_id = afiliator_id.toString();
 
-        let polarProductId = packageDetails.polar_product_id;
+        // --- Polar Product and Price Handling ---
+        let currentPolarProductId = packageDetails.polar_product_id;
         let productPriceIdForPolar = null;
+        let productNeedsCreation = !currentPolarProductId; // Assume creation if no ID initially
 
-        console.log(`[CreatePayment] Initial Polar Product ID from DB: ${polarProductId}`);
-
-        if (polarProductId) {
+        if (currentPolarProductId) {
             try {
-                console.log(`[CreatePayment] Attempting to fetch product details from Polar for Product ID: ${polarProductId}`);
-                const productFromPolar = await polarService.getProduct(polarProductId);
-                console.log(`[CreatePayment] Fetched from Polar for ${polarProductId}:`, JSON.stringify(productFromPolar, null, 2));
+                console.log(`[CreatePayment] Attempting to fetch product details from Polar for Product ID: ${currentPolarProductId}`);
+                const productFromPolar = await polarService.getProduct(currentPolarProductId);
 
-                if (productFromPolar && productFromPolar.prices && productFromPolar.prices.length > 0) {
-                    productPriceIdForPolar = productFromPolar.prices[0].id;
-                    console.log(`[CreatePayment] Successfully fetched active Price ID from Polar: ${productPriceIdForPolar} for Product ID: ${polarProductId}`);
-                    if (JSON.stringify(packageDetails.polar_metadata) !== JSON.stringify(productFromPolar)) {
-                        packageDetails.polar_metadata = productFromPolar;
-                        await packageDetails.save({ session });
-                        console.log(`[CreatePayment] Updated local package metadata for Product ID: ${polarProductId}.`);
+                if (productFromPolar) { // Product found in Polar
+                    const targetInterval = packageDetails.durationInDays <= 31 ? 'month' : (packageDetails.durationInDays <= 366 ? 'year' : 'month');
+                    const suitablePrice = productFromPolar.prices?.find(p =>
+                        !p.isArchived &&
+                        p.type === 'recurring' &&
+                        p.recurring_interval === targetInterval &&
+                        p.price_amount > 0 // Ensure it's a paid price
+                    );
+
+                    if (suitablePrice) {
+                        productPriceIdForPolar = suitablePrice.id;
+                        console.log(`[CreatePayment] Found suitable Price ID from existing Polar Product: ${productPriceIdForPolar}`);
+                        if (JSON.stringify(packageDetails.polar_metadata) !== JSON.stringify(productFromPolar)) {
+                            packageDetails.polar_metadata = productFromPolar;
+                        }
+                        productNeedsCreation = false; // Found existing product and price
+                    } else {
+                        console.warn(`[CreatePayment] Product ${currentPolarProductId} found, but no suitable price. Will attempt to update product to add/fix price.`);
+                        // We will try to update this product to ensure it has the correct price.
+                        // If update fails due to the "Expected object, received string" error, then we'll create a new one.
+                         productNeedsCreation = true; // Mark for update, then potentially creation
                     }
-                } else {
-                    console.warn(`[CreatePayment] Product ${polarProductId} fetched from Polar does NOT have any prices or is invalid. Price array: ${productFromPolar?.prices}`);
+                } else { // Product not found by getProduct (returned null)
+                    console.warn(`[CreatePayment] Product ${currentPolarProductId} not found in Polar. Will create a new one.`);
+                    productNeedsCreation = true;
+                    packageDetails.polar_product_id = null; // Clear the old, non-existent ID
                 }
             } catch (err) {
-                console.error(`[CreatePayment] FAILED to fetch product ${polarProductId} from Polar. Error: ${err.message}. Product might be archived/deleted or ID is incorrect.`);
-                polarProductId = null; // Reset if fetching failed, to trigger creation
+                console.error(`[CreatePayment] Error fetching/validating product ${currentPolarProductId} from Polar: ${err.message}.`);
+                if (err.message.includes("Expected object, received string") || err.message.includes("not found")) {
+                    console.warn(`[CreatePayment] Problematic Polar Product ID ${currentPolarProductId}. Will force creation of a new product.`);
+                    productNeedsCreation = true;
+                    packageDetails.polar_product_id = null; // Clear the problematic ID
+                } else {
+                    // For other errors, rethrow or handle as fatal, as it might not be recoverable by creating a new product.
+                    throw err;
+                }
+            }
+        }
+
+        if (productNeedsCreation) {
+            try {
+                let newOrUpdatedPolarProduct;
+                if (packageDetails.polar_product_id) { // This implies we had an ID, but price was unsuitable or getProduct failed mildly
+                    console.log(`[CreatePayment] Attempting to UPDATE existing Polar product ${packageDetails.polar_product_id} to ensure correct price.`);
+                    newOrUpdatedPolarProduct = await polarService.updateProduct(packageDetails.polar_product_id, packageDetails);
+                } else { // No current valid polar_product_id, so create anew
+                    console.log(`[CreatePayment] Attempting to CREATE new Polar product for package: ${packageDetails.packageName}`);
+                    newOrUpdatedPolarProduct = await polarService.createProduct(packageDetails);
+                }
+
+                console.log(`[CreatePayment] Result of Polar product sync (create/update):`, JSON.stringify(newOrUpdatedPolarProduct, null, 2));
+                packageDetails.polar_product_id = newOrUpdatedPolarProduct.id;
+                packageDetails.polar_metadata = newOrUpdatedPolarProduct;
+
+                const targetInterval = packageDetails.durationInDays <= 31 ? 'month' : (packageDetails.durationInDays <= 366 ? 'year' : 'month');
+                const suitablePrice = newOrUpdatedPolarProduct.prices?.find(p =>
+                    !p.isArchived &&
+                    p.type === 'recurring' &&
+                    p.recurring_interval === targetInterval &&
+                    p.price_amount > 0
+                );
+
+                if (suitablePrice) {
+                    productPriceIdForPolar = suitablePrice.id;
+                    console.log(`[CreatePayment] Successfully obtained Price ID after sync: ${productPriceIdForPolar}`);
+                } else {
+                    throw new Error(`CRITICAL: Polar product ${newOrUpdatedPolarProduct.id} synced but has NO suitable paid recurring price.`);
+                }
+            } catch (syncError) {
+                 console.error(`[CreatePayment] Error during product sync (create/update): ${syncError.message}`);
+                 // If update failed on the original problematic ID again with "Expected object, received string",
+                 // then we must absolutely try to create a new one if we haven't already.
+                 if (syncError.message.includes("Expected object, received string") && packageDetails.polar_product_id === currentPolarProductId) {
+                     console.warn(`[CreatePayment] Update failed for problematic ID ${currentPolarProductId}. Forcing creation of NEW product.`);
+                     packageDetails.polar_product_id = null; // Ensure createProduct is called next if this path is re-entered or in a retry
+                     // This error is now thrown up to the main catch block for createUserPayment
+                 }
+                throw new Error(`Failed to sync package with payment provider: ${syncError.message}`);
             }
         }
         
-        if (!polarProductId || !productPriceIdForPolar) {
-            console.warn(`[CreatePayment] Polar Product ID (${polarProductId}) or Price ID (${productPriceIdForPolar}) is missing or couldn't be fetched reliably. Attempting to create/ensure product in Polar for package: ${packageDetails.packageName}`);
-            try {
-                const newOrUpdatedPolarProduct = await polarService.createProduct(packageDetails);
-                console.log(`[CreatePayment] Result of createProduct for ${packageDetails.packageName}:`, JSON.stringify(newOrUpdatedPolarProduct, null, 2));
-                
-                packageDetails.polar_product_id = newOrUpdatedPolarProduct.id;
-                packageDetails.polar_metadata = newOrUpdatedPolarProduct;
-                await packageDetails.save({ session });
-
-                polarProductId = newOrUpdatedPolarProduct.id;
-                if (newOrUpdatedPolarProduct.prices && newOrUpdatedPolarProduct.prices.length > 0) {
-                    productPriceIdForPolar = newOrUpdatedPolarProduct.prices[0].id;
-                    console.log(`[CreatePayment] Successfully created/ensured Polar Product ID: ${polarProductId}, and obtained Price ID: ${productPriceIdForPolar}`);
-                } else {
-                    console.error(`[CreatePayment] CRITICAL: Polar product ${polarProductId} was created/updated by createProduct but still has NO prices in the response.`);
-                }
-            } catch (productCreationError) {
-                await session.abortTransaction(); session.endSession();
-                console.error("[CreatePayment] Error during polarService.createProduct:", productCreationError);
-                return res.status(500).json({ success: false, message: `Failed to sync package with payment provider: ${productCreationError.message}` });
-            }
+        // Save packageDetails if polar_product_id or metadata changed.
+        if (packageDetails.isModified('polar_product_id') || packageDetails.isModified('polar_metadata')) {
+            await packageDetails.save({ session });
+            console.log(`[CreatePayment] Saved updated packageDetails for ${packageDetails.packageName} to DB.`);
         }
+
 
         if (!productPriceIdForPolar) {
-            await session.abortTransaction(); session.endSession();
-            const errorMessage = `CRITICAL: Could not determine a valid Polar Price ID for package ${packageDetails.packageName} (Polar Product ID: ${polarProductId}). Please check product and price configuration in Polar.sh dashboard and ensure polarService.createProduct correctly creates prices.`;
-            console.error(errorMessage);
-            return res.status(500).json({ success: false, message: "Payment processing error: Essential pricing information from payment gateway is missing.", error: errorMessage });
+            // This should ideally not be reached if the logic above is correct.
+            const finalErrorMessage = `CRITICAL FINAL: Could not determine a valid Polar Price ID for package ${packageDetails.packageName} (Polar Product ID: ${packageDetails.polar_product_id}). Aborting.`;
+            console.error(finalErrorMessage);
+            errorLogs(req, res, finalErrorMessage, "controllers/paymentControllers/createPayment.js (Price ID Missing Final Check)");
+            // Do not abort session here, let main catch handle it
+            throw new Error("Payment processing error: Essential pricing information from payment gateway is missing.");
         }
 
+        // --- Polar Checkout Creation (same as before, using 'lineItems') ---
         const successRedirectUrl = new URL(`payment/success?checkout_id={CHECKOUT_ID}`, feBaseUrl.href).toString();
         const cancelRedirectUrl = new URL(`payment/cancelled?checkout_id={CHECKOUT_ID}`, feBaseUrl.href).toString();
 
         const checkoutPayloadForPolar = {
             customerEmail: req.user.email, customerName: req.user.username, customerExternalId: req.user._id.toString(),
             successUrl: successRedirectUrl, cancelUrl: cancelRedirectUrl, metadata: metadataForPolar, currency: "USD",
-            products: [productPriceIdForPolar] // Array of Price ID strings
+            lineItems: [{ price_id: productPriceIdForPolar, quantity: 1 }]
         };
         if (voucherCodeForPolar) checkoutPayloadForPolar.discountCode = voucherCodeForPolar;
         
         console.log("[CreatePayment] Final payload for Polar checkout:", JSON.stringify(checkoutPayloadForPolar, null, 2));
         const polarCheckout = await polarService.createCheckout(checkoutPayloadForPolar);
 
+        // --- Payment Record Creation (same as before) ---
         const expiredTime = polarCheckout.expires_at ? new Date(polarCheckout.expires_at) : new Date(Date.now() + (24 * 60 * 60 * 1000));
         const newUserPayment = new PaymentModel({
             userId: req.user._id, userName: req.user.username, package_id: packageDetails._id, payment_time: Date.now(),
-            expired_time: expiredTime, polar_checkout_id: polarCheckout.id, polar_product_id: polarProductId, reference: polarCheckout.id,
+            expired_time: expiredTime, polar_checkout_id: polarCheckout.id, polar_product_id: packageDetails.polar_product_id, reference: polarCheckout.id,
             admin: 0, amount: finalAmountUSD, total: originalAmountUSD, discount_amount: totalDiscountAmountUSD,
             checkout_url: polarCheckout.url, invoice, voucher_id: appliedVoucherId, afiliator_id: afiliator_id || undefined,
             polar_metadata: polarCheckout, currency: "USD"
         });
         await newUserPayment.save({ session });
-        await session.commitTransaction(); session.endSession();
+        
+        await session.commitTransaction();
         console.log(`[CreatePayment] Payment record created (ID: ${newUserPayment._id}), Polar checkout URL: ${polarCheckout.url}`);
         res.status(201).json({
             success: true, message: "Checkout session created successfully with Polar", checkout_url: polarCheckout.url,
@@ -166,12 +215,21 @@ exports.createUserPayment = async (req, res) => {
         });
 
     } catch (error) {
-        await session.abortTransaction(); session.endSession();
-        console.error("[CreatePayment] ❌ Outer catch - Payment creation failed:", error);
+        await session.abortTransaction();
+        console.error("[CreatePayment] ❌ Outer catch - Payment creation failed:", error.message, error.stack);
         errorLogs(req, res, error.message, "controllers/paymentControllers/createPayment.js");
-        let errorMessage = "Failed to create payment"; let errorDetails = error.message;
-        if (error.message && error.message.includes("Input validation failed:") && error.message.includes("path")) { try { const match = error.message.match(/(\[[\s\S]*\])/); if (match && match[1]) { errorDetails = JSON.parse(match[1]); } } catch (parseError) { console.error("[CreatePayment] Error parsing Polar validation error detail:", parseError); }
-        } else if (error.message && error.message.includes("Failed to create checkout session in Polar") && error.message.includes("detail")) { try { const jsonErrorMatch = error.message.match(/{.*}/s); if (jsonErrorMatch && jsonErrorMatch[0]) { const polarErrorDetail = JSON.parse(jsonErrorMatch[0]); errorDetails = polarErrorDetail.detail || polarErrorDetail; } } catch (parseError) { console.error("[CreatePayment] Error parsing general Polar error detail:", parseError); } }
-        res.status(500).json({ success: false, message: errorMessage, error: errorDetails });
+        
+        let errorDetails = error.message;
+        if (error.response && error.response.data && error.response.data.detail) {
+             if (Array.isArray(error.response.data.detail) && error.response.data.detail.length > 0 && error.response.data.detail[0].msg) {
+                errorDetails = error.response.data.detail.map(d => `${d.loc.join('.')}: ${d.msg}`).join('; ');
+            } else if (typeof error.response.data.detail === 'string') {
+                errorDetails = error.response.data.detail;
+            }
+        }
+        res.status(500).json({ success: false, message: "Failed to create payment", error: errorDetails });
+
+    } finally {
+        session.endSession();
     }
 };

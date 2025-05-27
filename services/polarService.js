@@ -25,7 +25,7 @@ class PolarService {
                     list: async (params) => { console.warn("Dummy Polar: customers.list called", params); return ({ items: [], pagination: { total_count: 0, max_page: 1 } }); }
                 },
                 products: {
-                    create: async (data) => { console.warn("Dummy Polar: products.create called", data); return ({ id: `dummy-product-${Date.now()}`, prices: [{ id: `dummy-price-${Date.now()}`, price_amount: data.prices[0]?.price_amount, price_currency: data.prices[0]?.price_currency }] }); },
+                    create: async (data) => { console.warn("Dummy Polar: products.create called", data); return ({ id: `dummy-product-${Date.now()}`, prices: [{ id: `dummy-price-${Date.now()}`, price_amount: data.prices[0]?.price_amount, price_currency: data.prices[0]?.price_currency, type: data.prices[0]?.type, recurring_interval: data.prices[0]?.recurring_interval }] }); },
                     update: async (id, data) => { console.warn("Dummy Polar: products.update called", id, data); return ({ id }); },
                     get: async (id) => { console.warn("Dummy Polar: products.get called", id); return ({ id, prices: [] }); },
                     archive: async (id) => { console.warn("Dummy Polar: products.archive called", id); return ({ id }); }
@@ -104,7 +104,7 @@ class PolarService {
     async createProduct(packageData) {
         try {
             console.log(`[PolarService] Creating Polar product for package: ${packageData.packageName} (ID: ${packageData._id})`);
-            const recurringInterval = packageData.durationInDays <= 60 ? 'month' : 'year';
+            const recurringInterval = packageData.durationInDays <= 31 ? 'month' : (packageData.durationInDays <= 366 ? 'year' : 'month'); // Simplified logic
 
             const basePriceUSD = parseFloat(packageData.price);
             if (isNaN(basePriceUSD)) {
@@ -132,10 +132,11 @@ class PolarService {
             const productData = {
                 name: packageData.packageName,
                 description: `${packageData.packageName} - ${packageData.durationName}`,
-                recurringInterval: recurringInterval,
+                recurringInterval: recurringInterval, // Product is recurring
                 prices: [
                     {
-                        type: "one_time",
+                        type: "recurring", // Price is also recurring
+                        recurring_interval: recurringInterval, // Price's interval matches product's
                         price_amount: finalPriceInCents,
                         price_currency: "USD",
                         metadata: {
@@ -176,7 +177,7 @@ class PolarService {
             const response = await this.client.products.create(productData);
             console.log(`[PolarService] ✅ Polar product created: ${response.id}, Name: ${response.name}`);
             if (response.prices && response.prices.length > 0) {
-                console.log(`[PolarService] Polar product price created: ${response.prices[0].price_amount} ${response.prices[0].price_currency}`);
+                console.log(`[PolarService] Polar product price created: ID ${response.prices[0].id}, Amount: ${response.prices[0].price_amount} ${response.prices[0].price_currency}, Type: ${response.prices[0].type}, Interval: ${response.prices[0].recurring_interval}`);
             } else {
                 console.warn(`[PolarService] ⚠️ Polar product created WITHOUT prices: ${response.id}`);
             }
@@ -198,7 +199,7 @@ class PolarService {
                 throw new Error(`Polar product with ID ${productId} not found for update.`);
             }
 
-            const recurringInterval = packageData.durationInDays <= 60 ? 'month' : 'year';
+            const recurringInterval = packageData.durationInDays <= 31 ? 'month' : (packageData.durationInDays <= 366 ? 'year' : 'month'); // Simplified logic
             const basePriceUSD = parseFloat(packageData.price);
             if (isNaN(basePriceUSD)) throw new Error('Invalid base price for package update.');
             const basePriceInCents = Math.round(basePriceUSD * 100);
@@ -221,7 +222,7 @@ class PolarService {
             const updateData = {
                 name: packageData.packageName,
                 description: `${packageData.packageName} - ${packageData.durationName}`,
-                recurringInterval: recurringInterval,
+                recurringInterval: recurringInterval, // Update product's recurring interval
                 metadata: {
                     ...(existingProduct.metadata || {}),
                     package_id: packageData._id.toString(),
@@ -241,30 +242,51 @@ class PolarService {
             const response = await this.client.products.update(productId, updateData);
             console.log(`[PolarService] ✅ Polar product updated: ${response.id}`);
 
+            // Handle price update or creation
+            // It's generally better to archive old prices and create new ones if the core attributes (like type/interval) change.
+            // For simplicity, if a price exists, we update its amount. If not, we create a new one.
+            // Polar might not allow changing an existing price's type or interval.
+            
+            let priceUpdatedOrCreated = false;
             if (existingProduct.prices && existingProduct.prices.length > 0) {
-                const priceToUpdate = existingProduct.prices[0];
-                 console.log(`[PolarService] Attempting to update price ID: ${priceToUpdate.id} for product ${productId}`);
-                await this.client.prices.update(priceToUpdate.id, {
-                    price_amount: finalPriceInCents,
-                    price_currency: "USD",
-                     metadata: {
-                        ...(priceToUpdate.metadata || {}),
-                        is_discounted_price: useDiscountedPrice,
-                        ...(useDiscountedPrice && {
-                            original_price_cents: regularPriceForMetadata,
-                            discount_ends_at: packageData.endDiscountDate ? new Date(packageData.endDiscountDate).toISOString() : null
-                        })
+                const priceToUpdate = existingProduct.prices[0]; // Assuming one primary price
+                // Check if the existing price is compatible (recurring and same interval)
+                if (priceToUpdate.type === "recurring" && priceToUpdate.recurring_interval === recurringInterval) {
+                    console.log(`[PolarService] Attempting to update existing price ID: ${priceToUpdate.id} for product ${productId}`);
+                    await this.client.prices.update(priceToUpdate.id, {
+                        price_amount: finalPriceInCents,
+                        price_currency: "USD", // Assuming USD
+                        metadata: {
+                            ...(priceToUpdate.metadata || {}),
+                            is_discounted_price: useDiscountedPrice,
+                            ...(useDiscountedPrice && {
+                                original_price_cents: regularPriceForMetadata,
+                                discount_ends_at: packageData.endDiscountDate ? new Date(packageData.endDiscountDate).toISOString() : null
+                            })
+                        }
+                    });
+                    console.log(`[PolarService] ✅ Price ID ${priceToUpdate.id} updated for product ${productId}.`);
+                    priceUpdatedOrCreated = true;
+                } else {
+                    console.warn(`[PolarService] ⚠️ Existing price ${priceToUpdate.id} type/interval mismatch. Archiving and creating a new one.`);
+                    try {
+                        await this.client.prices.archive(priceToUpdate.id);
+                        console.log(`[PolarService] ✅ Archived old price ${priceToUpdate.id}.`);
+                    } catch (archiveError) {
+                        console.error(`[PolarService] ❌ Failed to archive old price ${priceToUpdate.id}:`, archiveError.message);
                     }
-                });
-                console.log(`[PolarService] ✅ Price ID ${priceToUpdate.id} updated for product ${productId}.`);
-            } else {
-                console.warn(`[PolarService] ⚠️ No prices found to update for product ${productId}. Creating a new price.`);
-                 await this.client.prices.create({
-                    type: "one_time",
+                }
+            }
+            
+            if (!priceUpdatedOrCreated) {
+                console.log(`[PolarService] Creating new price for product ${productId} as no suitable existing price found or old one archived.`);
+                await this.client.prices.create({
+                    type: "recurring",
+                    recurring_interval: recurringInterval,
                     price_amount: finalPriceInCents,
                     price_currency: "USD",
                     product_id: productId,
-                     metadata: {
+                    metadata: {
                         is_discounted_price: useDiscountedPrice,
                         ...(useDiscountedPrice && {
                             original_price_cents: regularPriceForMetadata,
@@ -272,10 +294,10 @@ class PolarService {
                         })
                     }
                 });
-                console.log(`[PolarService] ✅ New price created for product ${productId}.`);
+                console.log(`[PolarService] ✅ New recurring price created for product ${productId}.`);
             }
 
-            return await this.client.products.get(productId);
+            return await this.client.products.get(productId); // Return the updated product with potentially new/updated price
 
         } catch (error) {
             console.error("[PolarService] ❌ Error updating Polar product:", error.message);
@@ -296,7 +318,6 @@ class PolarService {
             if (error.response && error.response.data) {
                 console.error("[PolarService] Polar Error Details:", JSON.stringify(error.response.data, null, 2));
             }
-            // Do not re-throw if it's a "not found" or already archived error, otherwise re-throw
             if (error.response && (error.response.status === 404 || (error.response.data && error.response.data.detail && error.response.data.detail.toLowerCase().includes('archived')))) {
                 console.warn(`[PolarService] Product ${productId} already archived or not found in Polar for archiving.`);
                 return { id: productId, archived: true, message: "Already archived or not found" };
@@ -309,11 +330,21 @@ class PolarService {
     async getProduct(productId) {
         try {
             console.log(`[PolarService] Getting Polar product by ID: ${productId}`);
+            // The Polar SDK's get method might not require a body.
+            // If it does and you're passing a string where an object is expected by the SDK's internal fetch/validation,
+            // that could be an issue. However, typically, a GET request with an ID in the path doesn't have a body.
+            // Assuming the SDK handles this correctly.
             return await this.client.products.get(productId);
         } catch (error) {
             console.error("[PolarService] ❌ Error getting Polar product:", error.message);
             if (error.response && error.response.data) {
-                console.error("[PolarService] Polar Error Details:", JSON.stringify(error.response.data, null, 2));
+                console.error("[PolarService] Polar Error Details for getProduct:", JSON.stringify(error.response.data, null, 2));
+                // The error "Expected object, received string" might be how the SDK surfaces a 404 or malformed JSON from Polar.
+            }
+             // Don't rethrow if it's a "not found" type of error from Polar (often a 404 status or specific detail message)
+            if (error.response && error.response.status === 404) {
+                console.warn(`[PolarService] Product ${productId} not found in Polar.`);
+                return null; // Explicitly return null for "not found"
             }
             throw new Error(`Failed to get product from Polar: ${error.response?.data?.detail || error.response?.data?.message || error.message}`);
         }
@@ -368,8 +399,8 @@ class PolarService {
             const discountPayloadBase = {
                 name: voucherData.name,
                 code: voucherData.code,
-                startDate: new Date(voucherData.startDate).toISOString().split('T')[0], // YYYY-MM-DD
-                endDate: new Date(voucherData.endDate).toISOString().split('T')[0],     // YYYY-MM-DD
+                startDate: new Date(voucherData.startDate).toISOString().split('T')[0], 
+                endDate: new Date(voucherData.endDate).toISOString().split('T')[0],     
                 metadata: {
                     voucher_id_internal: voucherData._id.toString(),
                     platform: 'designrhub',
@@ -381,16 +412,16 @@ class PolarService {
 
             if (voucherData.discountType === 'fixed') {
                 const discountUSD = parseFloat(voucherData.discount);
-                if (isNaN(discountUSD) || discountUSD <= 0) { // Fixed discount must be positive
+                if (isNaN(discountUSD) || discountUSD <= 0) { 
                     throw new Error('Invalid fixed discount value. Must be a positive number.');
                 }
                 discountPayload = {
                     ...discountPayloadBase,
                     type: "fixed",
-                    amountOff: Math.round(discountUSD * 100), // Expects amountOff in cents
+                    amountOff: Math.round(discountUSD * 100), 
                     currency: "USD",
                 };
-            } else { // percentage
+            } else { 
                 const discountPercentage = parseFloat(voucherData.discount);
                  if (isNaN(discountPercentage) || discountPercentage <=0 || discountPercentage > 100) {
                      throw new Error('Invalid percentage discount value. Must be > 0 and <= 100.');
@@ -398,12 +429,10 @@ class PolarService {
                 discountPayload = {
                     ...discountPayloadBase,
                     type: "percentage",
-                    basisPoints: Math.round(discountPercentage * 100), // Expects basisPoints (e.g., 15% is 1500)
+                    basisPoints: Math.round(discountPercentage * 100), 
                 };
             }
 
-            // Handle duration based on voucherData.polarDurationType
-            // Defaulting to 'once' if not specified or invalid
             const polarDuration = voucherData.polarDurationType || 'once';
             discountPayload.duration = polarDuration;
 
@@ -425,7 +454,6 @@ class PolarService {
                 console.error("[PolarService] Polar Error Details:", JSON.stringify(error.response.data, null, 2));
             }
             const errorMessage = error.response?.data?.detail || error.response?.data?.message || error.message;
-            // Log the payload that caused the error for easier debugging
             if (error.response?.data?.validation_errors) {
                  console.error("[PolarService] Validation Errors:", JSON.stringify(error.response.data.validation_errors, null, 2));
             }
@@ -465,7 +493,7 @@ class PolarService {
                     amountOff: Math.round(discountUSD * 100),
                     currency: "USD",
                 };
-            } else { // percentage
+            } else { 
                 const discountPercentage = parseFloat(voucherData.discount);
                  if (isNaN(discountPercentage) || discountPercentage <=0 || discountPercentage > 100) {
                      throw new Error('Invalid percentage discount value for update. Must be > 0 and <= 100.');
@@ -487,7 +515,6 @@ class PolarService {
                 }
                 discountPayload.durationInMonths = parseInt(durationInMonths, 10);
             } else {
-                // Ensure durationInMonths is not sent if duration is not 'repeating'
                 delete discountPayload.durationInMonths;
             }
 
@@ -524,9 +551,6 @@ class PolarService {
     }
 
 
-    /**
-     * Subscription Management
-     */
     async getSubscription(subscriptionId) {
         try {
             console.log(`[PolarService] Getting Polar subscription by ID: ${subscriptionId}`);
@@ -555,9 +579,6 @@ class PolarService {
         }
     }
 
-    /**
-     * Webhook Verification
-     */
     verifyWebhookSignature(payload, signature) {
         try {
             if (!process.env.POLAR_WEBHOOK_SECRET) {
@@ -575,12 +596,10 @@ class PolarService {
                 return false;
             }
 
-            // Parse the signature header (e.g., "t=timestamp,v1=signature_value")
             const parts = signature.split(',');
-            let sigTimestamp, sigValue;
+            let sigValue;
             for (const part of parts) {
                 const [key, value] = part.split('=');
-                if (key === 't') sigTimestamp = value;
                 if (key === 'v1') sigValue = value;
             }
 
@@ -589,14 +608,15 @@ class PolarService {
                 return false;
             }
 
-            const sigBuffer = Buffer.from(sigValue, 'utf8');
+            const sigBuffer = Buffer.from(sigValue, 'utf8'); // Polar hex encodes the signature
             const computedSigBuffer = Buffer.from(computedSignature, 'utf8');
+
 
             if (sigBuffer.length !== computedSigBuffer.length) {
                 console.warn("[PolarService] Webhook signature length mismatch.");
                 return false;
             }
-
+            
             const isValid = crypto.timingSafeEqual(sigBuffer, computedSigBuffer);
             console.log(`[PolarService] Webhook signature verification result: ${isValid}`);
             return isValid;
