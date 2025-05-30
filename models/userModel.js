@@ -61,8 +61,9 @@ const userSchema = new mongoose.Schema(
         polarCustomerId: { 
             type: String, 
             trim: true, 
-            index: true, 
-            sparse: true // Memungkinkan null/undefined tapi unik jika ada isinya
+            index: true, // Ensures an index is created for this field
+            sparse: true // Allows multiple documents to have a null/undefined value,
+                         // but if a value is present, it must be unique.
         },
 
         // afiliator information (tetap seperti sebelumnya)
@@ -90,7 +91,7 @@ userSchema.index({ status: 1 });
 userSchema.index({ subscriptionPackage: 1 });
 userSchema.index({ afiliatedBy: 1 });
 userSchema.index({ expireAfiliator: 1 });
-userSchema.index({ polarCustomerId: 1 }); // Index untuk polarCustomerId
+// The index for polarCustomerId is now handled inline, so no separate userSchema.index({ polarCustomerId: 1 }); is needed.
 
 // 🔥 Index untuk Pencarian Text di Username & Email
 userSchema.index({ username: "text", email: "text" });

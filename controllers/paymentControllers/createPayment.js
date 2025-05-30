@@ -1,20 +1,21 @@
 // controllers/paymentControllers/createPayment.js
-const mongoose = "mongoose";
+const mongoose = require("mongoose"); // <<< CORRECTED IMPORT
 const PaymentModel = require("../../models/paymentModel");
 const PackageModel = require("../../models/packageModel");
 const UserModel = require("../../models/userModel");
-const VoucherModel = require("../../models/voucerModel"); // Pastikan nama model konsisten
+const VoucherModel = require("../../models/voucerModel");
 const polarService = require("../../services/polarService");
 const { errorLogs } = require("../../utils/errorLogs");
 const crypto = require('crypto');
 
 exports.createUserPayment = async (req, res) => {
     const { package_id, voucher_code } = req.body;
-    const userId = req.userId;
+    const userId = req.userId; // Assuming req.userId is set by your authentication middleware
 
     if (!package_id) {
         return res.status(400).json({ message: "Package ID is required." });
     }
+    // FIX: Correct mongoose usage for ObjectId validation
     if (!mongoose.Types.ObjectId.isValid(package_id)) {
         return res.status(400).json({ message: "Invalid Package ID format." });
     }
@@ -52,15 +53,12 @@ exports.createUserPayment = async (req, res) => {
             return res.status(500).json({ message: "Could not retrieve product pricing details from the payment gateway." });
         }
 
-        // Tentukan interval recurring berdasarkan durasi paket
         const recurringInterval = polarService.determineRecurringInterval(selectedPackage.durationInDays);
-
-        // Cari harga yang sesuai (recurring, USD, interval cocok, dan aktif)
         const polarPrice = polarProduct.prices.find(p => 
             p.type === "recurring" &&
-            p.recurring_interval === recurringInterval && // Cocokkan interval
+            p.recurring_interval === recurringInterval &&
             p.price_currency?.toLowerCase() === 'usd' &&
-            !p.is_archived // Pastikan harga tidak diarsipkan
+            !p.is_archived
         );
         
         if (!polarPrice || !polarPrice.id) {
@@ -70,18 +68,17 @@ exports.createUserPayment = async (req, res) => {
         }
         console.log(`[CreateUserPaymentCtrl] Using Polar price ID: ${polarPrice.id} (Amount: ${polarPrice.price_amount} ${polarPrice.price_currency}/${polarPrice.recurring_interval})`);
 
-
-        let packagePriceUSD = parseFloat(selectedPackage.price); // Harga asli paket
-        let finalAmountUSD = packagePriceUSD;
-        let discountAmountUSD = 0;
+        let packagePriceUSD = parseFloat(selectedPackage.price);
+        let finalAmountUSD = packagePriceUSD; // This will be the amount Polar charges if no discount applied by Polar
+        let discountAmountUSDCalculatedLocally = 0; // For local record keeping
         let appliedVoucher = null;
         let polarDiscountIdToApply = null;
 
         if (voucher_code) {
             appliedVoucher = await VoucherModel.findOne({
-                code: voucher_code.toUpperCase(), // Cocokkan dengan kode uppercase
+                code: voucher_code.toUpperCase(),
                 status: 'open',
-                isArchived: false, // Pastikan tidak diarsipkan
+                isArchived: false,
                 startDate: { $lte: new Date() },
                 endDate: { $gte: new Date() }
             }).session(session);
@@ -89,7 +86,6 @@ exports.createUserPayment = async (req, res) => {
             if (appliedVoucher) {
                 const isUsageLimitReached = appliedVoucher.usageLimit !== null && appliedVoucher.timesUsed >= appliedVoucher.usageLimit;
                 const isMinPurchaseMet = packagePriceUSD >= (appliedVoucher.minimumPurchaseAmount || 0);
-                // Cek apakah voucher berlaku untuk paket ini (jika packageId di voucher diisi)
                 const isPackageApplicable = !appliedVoucher.packageId || appliedVoucher.packageId.length === 0 || appliedVoucher.packageId.some(id => id.equals(selectedPackage._id));
 
                 if (!isUsageLimitReached && isMinPurchaseMet && isPackageApplicable) {
@@ -97,23 +93,21 @@ exports.createUserPayment = async (req, res) => {
                         polarDiscountIdToApply = appliedVoucher.polar_discount_id;
                         console.log(`[CreateUserPaymentCtrl] Applying Polar discount ID: ${polarDiscountIdToApply} for voucher ${appliedVoucher.code}`);
                         
-                        // Kalkulasi diskon untuk catatan lokal (Polar akan menangani kalkulasi sebenarnya)
                         if (appliedVoucher.discountType === 'percentage') {
-                            discountAmountUSD = (parseFloat(appliedVoucher.discount) / 100) * packagePriceUSD;
+                            discountAmountUSDCalculatedLocally = (parseFloat(appliedVoucher.discount) / 100) * packagePriceUSD;
                         } else if (appliedVoucher.discountType === 'fixed') {
-                            discountAmountUSD = parseFloat(appliedVoucher.discount);
+                            discountAmountUSDCalculatedLocally = parseFloat(appliedVoucher.discount);
                         }
-                        discountAmountUSD = Math.min(discountAmountUSD, packagePriceUSD); // Diskon tidak boleh > harga
-                        finalAmountUSD = Math.max(0, packagePriceUSD - discountAmountUSD); // Harga akhir tidak boleh < 0
+                        discountAmountUSDCalculatedLocally = Math.min(discountAmountUSDCalculatedLocally, packagePriceUSD);
+                        // Note: finalAmountUSD will be determined by Polar if discount is applied there.
+                        // For local record, you might record the potential final amount.
                     } else {
                         console.warn(`[CreateUserPaymentCtrl] Voucher ${appliedVoucher.code} is valid locally but has no associated Polar Discount ID. The discount will NOT be applied by Polar.`);
-                        // Jika ini terjadi, Anda mungkin ingin GAGALKAN checkout atau informasikan pengguna
-                        // Untuk sekarang, kita biarkan tanpa diskon Polar jika ID tidak ada.
-                        appliedVoucher = null; // Anggap voucher tidak jadi dipakai jika tidak ada ID Polar
+                        appliedVoucher = null; 
                     }
                 } else {
                     console.log(`[CreateUserPaymentCtrl] Voucher ${voucher_code} conditions not met. Usage Limit: ${isUsageLimitReached}, Min Purchase: ${isMinPurchaseMet}, Package Applicable: ${isPackageApplicable}`);
-                    appliedVoucher = null; // Voucher tidak valid atau tidak memenuhi syarat
+                    appliedVoucher = null;
                 }
             } else {
                  console.log(`[CreateUserPaymentCtrl] Voucher ${voucher_code} not found or not valid.`);
@@ -127,22 +121,22 @@ exports.createUserPayment = async (req, res) => {
             userName: user.username,
             package_id: selectedPackage._id,
             polar_product_id: selectedPackage.polar_product_id,
-            polar_customer_id: user.polarCustomerId || null, // Sertakan ID customer Polar jika ada
+            polar_customer_id: user.polarCustomerId || null, 
             payment_status: 'pending',
-            total: packagePriceUSD,        // Harga asli paket dalam USD
-            amount: finalAmountUSD,        // Harga akhir setelah diskon dalam USD
-            discount_amount: discountAmountUSD, // Jumlah diskon dalam USD
+            total: packagePriceUSD,        
+            amount: packagePriceUSD - discountAmountUSDCalculatedLocally, // Tentative final amount, Polar is source of truth
+            discount_amount: discountAmountUSDCalculatedLocally, 
             voucher_id: appliedVoucher ? appliedVoucher._id : null,
             voucher_code_applied: appliedVoucher ? appliedVoucher.code : null,
             invoice: invoiceNumber,
             currency: 'USD',
-            polar_metadata: { // Metadata yang akan dikirim ke Polar
+            polar_metadata: { 
                 user_id_internal: user._id.toString(),
-                user_email_internal: user.email, // Untuk referensi
+                user_email_internal: user.email, 
                 package_id_internal: selectedPackage._id.toString(),
                 package_name_internal: selectedPackage.packageName,
                 invoice_internal: invoiceNumber,
-                ...(appliedVoucher && polarDiscountIdToApply && { // Hanya jika diskon Polar akan diterapkan
+                ...(appliedVoucher && polarDiscountIdToApply && { 
                     voucher_code_internal: appliedVoucher.code, 
                     voucher_id_internal: appliedVoucher._id.toString(),
                     polar_discount_id_ref: polarDiscountIdToApply 
@@ -154,33 +148,30 @@ exports.createUserPayment = async (req, res) => {
         await newPayment.save({ session });
         console.log(`[CreateUserPaymentCtrl] Local payment record created: ${newPayment._id}`);
 
-        const successUrl = `${process.env.FE_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}&payment_id=${newPayment._id.toString()}`; // Tambahkan payment_id
-        const cancelUrl = `${process.env.FE_URL}/payment-cancelled?payment_id=${newPayment._id.toString()}`; // Tambahkan payment_id
+        const successUrl = `${process.env.FE_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}&payment_id=${newPayment._id.toString()}`; 
+        const cancelUrl = `${process.env.FE_URL}/payment-cancelled?payment_id=${newPayment._id.toString()}`; 
         
         const checkoutPayload = {
             line_items: [{ price_id: polarPrice.id, quantity: 1 }],
             success_url: successUrl,
             cancel_url: cancelUrl,
-            customer_email: user.email, // Polar bisa membuat customer on-the-fly atau menggunakan yang ada
-            // Jika user.polarCustomerId ada, gunakan itu:
+            customer_email: user.email, 
             ...(user.polarCustomerId && { customer_id: user.polarCustomerId }),
             metadata: newPayment.polar_metadata,
-            expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // Checkout berlaku 30 menit
+            expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(), 
         };
 
         if (polarDiscountIdToApply) {
-            checkoutPayload.discounts = [{ coupon: polarDiscountIdToApply }]; // Polar mungkin menggunakan 'coupon' atau 'discount_id'
-                                                                             // Cek dokumentasi SDK: `discounts: [{ discount_id: 'string' }]` atau `discounts: [{ coupon: 'string' }]`
-                                                                             // API reference sebelumnya menyebut `discounts: [{ discount_id: 'string' }]`
-            checkoutPayload.discounts = [{ discount_id: polarDiscountIdToApply }];
+            // Polar SDK expects `discounts` as an array of objects, each with a `discount_id`
+             checkoutPayload.discounts = [{ discount_id: polarDiscountIdToApply }];
         }
 
         const polarCheckoutSession = await polarService.createCheckout(checkoutPayload);
 
         newPayment.polar_checkout_id = polarCheckoutSession.id;
-        newPayment.checkout_url = polarCheckoutSession.url; // URL redirect ke halaman checkout Polar
+        newPayment.checkout_url = polarCheckoutSession.url; 
         newPayment.expired_time = new Date(polarCheckoutSession.expires_at || (Date.now() + 30 * 60 * 1000));
-        newPayment.polar_metadata.polar_checkout_session_details = polarCheckoutSession; // Simpan detail sesi checkout dari Polar
+        // newPayment.polar_metadata.polar_checkout_session_details = polarCheckoutSession; // Avoid circular or too large objects if SDK returns a lot
         await newPayment.save({ session });
 
         await session.commitTransaction();
@@ -199,8 +190,18 @@ exports.createUserPayment = async (req, res) => {
         }
         session.endSession();
         console.error('[CreateUserPaymentCtrl] ❌ Error creating payment:', error);
-        errorLogs(req, res, error.message, "controllers/paymentControllers/createPayment.js (createUserPayment)");
-        const errorMessage = error.response?.data?.detail || error.response?.data?.message || error.message;
-        res.status(500).json({ message: "Failed to initiate payment.", error: errorMessage });
+        // errorLogs(req, res, error.message, "controllers/paymentControllers/createPayment.js (createUserPayment)");
+        
+        // Construct a more detailed error message if possible
+        let detailedErrorMessage = error.message;
+        if (error.response && error.response.data) {
+            const polarError = error.response.data;
+            detailedErrorMessage = polarError.detail || JSON.stringify(polarError.validation_errors || polarError);
+        } else if (error.issues) { // Zod validation error from SDK client-side
+             detailedErrorMessage = error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join('; ');
+        }
+        
+        errorLogs(req, res, detailedErrorMessage, "controllers/paymentControllers/createPayment.js (createUserPayment)");
+        res.status(500).json({ message: "Failed to initiate payment.", error: detailedErrorMessage });
     }
 };
