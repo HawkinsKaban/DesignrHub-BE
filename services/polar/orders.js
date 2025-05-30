@@ -1,15 +1,19 @@
+// services/polar/orders.js
 const client = require('./client');
 
 async function getOrder(orderId) {
     try {
         console.log(`[PolarOrders] Getting Polar order by ID: ${orderId}`);
-        return await client.orders.get(orderId);
+        const order = await client.orders.get(orderId); // Pastikan SDK memiliki client.orders.get
+        console.log(`[PolarOrders] ✅ Retrieved Polar order: ${order.id}`);
+        return order;
     } catch (error) {
-        console.error("[PolarOrders] ❌ Error getting Polar order:", error.message);
+        console.error(`[PolarOrders] ❌ Error getting Polar order ${orderId}:`, error.message);
         if (error.response && error.response.data) {
             console.error("[PolarOrders] Polar Error Details:", JSON.stringify(error.response.data, null, 2));
         }
-        throw new Error(`Failed to get order from Polar: ${error.response?.data?.detail || error.response?.data?.message || error.message}`);
+        const polarErrorDetail = error.response?.data?.detail || error.response?.data?.message || error.message;
+        throw new Error(`Failed to get order from Polar: ${polarErrorDetail}`);
     }
 }
 

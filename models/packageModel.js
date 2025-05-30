@@ -1,3 +1,4 @@
+// models/packageModel.js
 const mongoose = require("mongoose");
 
 const packageSchema = new mongoose.Schema(
@@ -5,28 +6,32 @@ const packageSchema = new mongoose.Schema(
         packageName: {
             type: String,
             required: true,
+            trim: true,
         },
-        price: {
+        price: { // Harga dasar dalam USD
             type: Number,
             required: true,
+            min: 0
         },
-        discountPrice: {
+        discountPrice: { // Harga diskon dalam USD (jika ada)
             type: Number,
+            min: 0
         },
-        durationName: {
+        durationName: { // Misal: '1 Bulan', '1 Tahun'
             type: String,
-            required: true, // Nama durasi, misalnya '1 bulan', '3 bulan', '6 bulan'
+            required: true, 
         },
         durationInDays: {
             type: Number,
-            required: true, // Durasi dalam hari, misalnya 30 untuk 1 bulan, 90 untuk 3 bulan, 180 untuk 6 bulan
+            required: true, 
+            min: 1
         },
         categoryId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Category",
-            required: false,
+            required: false, // Bisa jadi paket tidak terikat kategori tertentu
         },
-        onDiscount: {
+        onDiscount: { // Apakah diskon aktif saat ini (bisa juga ditentukan oleh endDiscountDate)
             type: Boolean,
             default: false
         },
@@ -34,23 +39,23 @@ const packageSchema = new mongoose.Schema(
             type: Date,
             required: false
         },
-        isActive: { //  hanya berpengaruh terhadap package yang di tampilkan di dashboard dan table package pada admin
+        isActive: { // Apakah paket ini bisa dibeli/ditampilkan
             type: Boolean,
             default: true,
         },
-        priority: {
+        priority: { // Untuk menentukan urutan paket atau penanganan tumpukan langganan
             type: Number,
             required: true,
-            default: 0, // makin besar makin tinggi prioritasnya
+            default: 0, 
         },
         // Polar.sh integration fields
-        polar_product_id: {
+        polar_product_id: { // ID Produk dari Polar
             type: String,
             required: false,
-            unique: true,
-            sparse: true // Allows multiple null values but unique non-null values
+            trim: true,
+            index: { unique: true, sparse: true } // Unik jika ada, tapi boleh null
         },
-        polar_metadata: {
+        polar_metadata: { // Untuk menyimpan detail/respons dari Polar terkait produk ini
             type: Object,
             default: {}
         }
@@ -62,7 +67,9 @@ const packageSchema = new mongoose.Schema(
 
 packageSchema.index({ packageName: 1 });
 packageSchema.index({ categoryId: 1 });
-packageSchema.index({ polar_product_id: 1 });
+packageSchema.index({ isActive: 1, priority: -1 }); // Index untuk query paket aktif berdasarkan prioritas
+
+// Pastikan index untuk polar_product_id sudah benar (sudah ada di atas)
 
 const Package = mongoose.model("Package", packageSchema);
 

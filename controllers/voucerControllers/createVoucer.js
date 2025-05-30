@@ -1,7 +1,7 @@
+// controllers/voucerControllers/createVoucer.js
 const mongoose = require("mongoose");
-const VoucherModel = require("../../models/voucerModel");
-const PackageModel = require("../../models/packageModel")
-const moment = require("moment-timezone"); // Tidak digunakan jika sudah pakai new Date()
+const VoucherModel = require("../../models/voucerModel"); // Pastikan nama model konsisten
+const PackageModel = require("../../models/packageModel");
 const polarService = require("../../services/polarService");
 const { errorLogs } = require("../../utils/errorLogs");
 
@@ -10,116 +10,134 @@ exports.createVoucher = async (req, res) => {
     session.startTransaction();
 
     try {
-        // Ambil packageId sebagai array jika dikirim sebagai string tunggal
-        let { startDate, endDate, name, packageId, discount, discountType, status, code, usageLimit, minimumPurchaseAmount } = req.body;
-        console.log(`[CreateVoucher] Attempting to create voucher: ${name} (Code: ${code})`);
+        let { 
+            startDate, endDate, name, packageId, 
+            discount, discountType, status, code, 
+            usageLimit, minimumPurchaseAmount,
+            polarDurationType, polarDurationInMonths // Tambahkan ini
+        } = req.body;
+        console.log(`[CreateVoucherCtrl] Attempting to create voucher: ${name} (Code: ${code})`);
 
+        if (!name || !code || !discount || !discountType || !endDate) {
+            await session.abortTransaction(); session.endSession();
+            return res.status(400).json({ message: "Name, code, discount, discountType, and endDate are required." });
+        }
+        
         if (packageId && !Array.isArray(packageId)) {
-            packageId = [packageId];
+            packageId = [packageId]; // Ubah ke array jika hanya satu string ID
+        } else if (!packageId) {
+            packageId = []; // Jika tidak ada, set ke array kosong (berlaku untuk semua paket)
         }
 
-
-        if (new Date(endDate) < new Date(startDate)) { // Menggunakan new Date() untuk perbandingan
-            await session.abortTransaction();
-            session.endSession();
+        if (new Date(endDate) < new Date(startDate || Date.now())) {
+            await session.abortTransaction(); session.endSession();
             return res.status(400).json({ message: "End date must be greater than or equal to start date." });
         }
 
-        const existingVoucherByCode = await VoucherModel.findOne({ code }).session(session);
+        const existingVoucherByCode = await VoucherModel.findOne({ code: code.toUpperCase() }).session(session);
         if (existingVoucherByCode) {
-            await session.abortTransaction();
-            session.endSession();
-            console.warn(`[CreateVoucher] Voucher code ${code} already exists.`);
+            await session.abortTransaction(); session.endSession();
+            console.warn(`[CreateVoucherCtrl] Voucher code ${code} already exists.`);
             return res.status(400).json({ message: "Voucher code already used." });
         }
 
-        // Validate packageId(s)
-        if (packageId && packageId.length > 0) {
-            const validPackageIds = [];
+        const validPackageObjectIds = [];
+        if (packageId.length > 0) {
             for (const pid of packageId) {
                 if (!mongoose.Types.ObjectId.isValid(pid)) {
                      await session.abortTransaction(); session.endSession();
-                     console.warn(`[CreateVoucher] Invalid Package ID format: ${pid}`);
+                     console.warn(`[CreateVoucherCtrl] Invalid Package ID format: ${pid}`);
                      return res.status(400).json({ message: `Invalid Package ID format: ${pid}` });
                 }
                 const existingPackage = await PackageModel.findById(pid).session(session);
                 if (!existingPackage) {
-                    await session.abortTransaction();
-                    session.endSession();
-                    console.warn(`[CreateVoucher] Package with ID ${pid} not found.`);
+                    await session.abortTransaction(); session.endSession();
+                    console.warn(`[CreateVoucherCtrl] Package with ID ${pid} not found.`);
                     return res.status(400).json({ message: `Package with ID ${pid} not found.` });
                 }
-                validPackageIds.push(existingPackage._id);
+                validPackageObjectIds.push(existingPackage._id);
             }
-            packageId = validPackageIds; // Gunakan ObjectId yang valid
-        } else {
-            packageId = []; // Jika tidak ada packageId, set ke array kosong (berlaku untuk semua)
         }
 
-        // Validasi discount value
         const parsedDiscount = parseFloat(discount);
-        if(isNaN(parsedDiscount) || parsedDiscount < 0) {
+        if(isNaN(parsedDiscount) || parsedDiscount <= 0) { // Diskon harus lebih dari 0
             await session.abortTransaction(); session.endSession();
-            return res.status(400).json({ message: "Discount value must be a non-negative number." });
+            return res.status(400).json({ message: "Discount value must be a positive number." });
         }
         if(discountType === 'percentage' && (parsedDiscount > 100)) {
              await session.abortTransaction(); session.endSession();
             return res.status(400).json({ message: "Percentage discount cannot exceed 100." });
         }
+        if(discountType === 'fixed' && parsedDiscount <=0) { // Untuk fixed, juga harus positif
+             await session.abortTransaction(); session.endSession();
+            return res.status(400).json({ message: "Fixed discount amount must be positive." });
+        }
 
 
         const newVoucherData = {
-            startDate: new Date(startDate),
+            startDate: startDate ? new Date(startDate) : new Date(),
             endDate: new Date(endDate),
             name,
-            packageId, // Ini sekarang array ObjectId
-            discount: parsedDiscount.toString(), // Simpan sebagai string untuk konsistensi, parse saat digunakan
+            packageId: validPackageObjectIds,
+            discount: parsedDiscount.toString(), 
             discountType,
             status: status || 'open',
-            code,
+            code: code.toUpperCase(), // Simpan kode dalam huruf besar
             usageLimit: usageLimit != null ? parseInt(usageLimit) : null,
-            minimumPurchaseAmount: minimumPurchaseAmount != null ? parseFloat(minimumPurchaseAmount) : 0, // Simpan dalam USD
+            minimumPurchaseAmount: minimumPurchaseAmount != null ? parseFloat(minimumPurchaseAmount) : 0,
             timesUsed: 0,
-            isArchived: false
+            isArchived: false,
+            polarDurationType: polarDurationType || 'once', // Default ke 'once' jika tidak disediakan
+            polarDurationInMonths: (polarDurationType === 'repeating' && polarDurationInMonths) ? parseInt(polarDurationInMonths) : undefined
         };
+         if (newVoucherData.polarDurationType === 'repeating' && (!newVoucherData.polarDurationInMonths || newVoucherData.polarDurationInMonths <= 0)) {
+            await session.abortTransaction(); session.endSession();
+            return res.status(400).json({ message: "For 'repeating' duration, 'polarDurationInMonths' is required and must be a positive integer." });
+        }
+
 
         const newVoucher = new VoucherModel(newVoucherData);
         await newVoucher.save({ session });
-        console.log(`[CreateVoucher] Voucher ${newVoucher.name} saved to DB (ID: ${newVoucher._id})`);
-
+        console.log(`[CreateVoucherCtrl] Voucher ${newVoucher.name} saved to DB (ID: ${newVoucher._id})`);
 
         let polarDiscount = null;
-        if (newVoucher.status !== 'close') { // Hanya sinkronisasi jika voucher tidak 'close'
+        let polarSyncError = null;
+        // Hanya sinkronisasi jika voucher aktif ('open') dan tidak diarsipkan
+        if (newVoucher.status === 'open' && !newVoucher.isArchived) {
             try {
-                console.log(`[CreateVoucher] Syncing voucher ${newVoucher.name} with Polar.`);
+                console.log(`[CreateVoucherCtrl] Syncing voucher ${newVoucher.name} with Polar.`);
                 polarDiscount = await polarService.createDiscount(newVoucher);
                 newVoucher.polar_discount_id = polarDiscount.id;
-                newVoucher.polar_metadata = polarDiscount;
+                newVoucher.polar_metadata = polarDiscount; // Simpan semua metadata dari Polar
                 await newVoucher.save({ session });
-                console.log(`[CreateVoucher] ✅ Voucher ${newVoucher.name} synced with Polar: ${polarDiscount.id}`);
-            } catch (polarError) {
-                console.error(`[CreateVoucher] ⚠️ Failed to sync voucher ${newVoucher.name} with Polar: ${polarError.message}`);
-                errorLogs(req, res, `Polar sync failed for new voucher ${newVoucher.name}: ${polarError.message}`, "controllers/voucerControllers/createVoucer.js (Polar Sync)");
+                console.log(`[CreateVoucherCtrl] ✅ Voucher ${newVoucher.name} synced with Polar: ${polarDiscount.id}`);
+            } catch (error) {
+                polarSyncError = error.message;
+                console.error(`[CreateVoucherCtrl] ⚠️ Failed to sync voucher ${newVoucher.name} with Polar: ${polarSyncError}`);
+                errorLogs(req, null, `Polar sync failed for new voucher ${newVoucher.name}: ${polarSyncError}`, "controllers/voucerControllers/createVoucer.js (Polar Sync)");
             }
         } else {
-             console.log(`[CreateVoucher] Voucher ${newVoucher.name} has status 'close', skipping Polar sync.`);
+             console.log(`[CreateVoucherCtrl] Voucher ${newVoucher.name} is not 'open' or is archived, skipping Polar sync.`);
         }
 
         await session.commitTransaction();
         session.endSession();
 
         res.status(201).json({
-            message: "Voucher created successfully!",
-            voucher: newVoucher, // Mengembalikan data voucher yang baru dibuat
-            polar_synced: !!polarDiscount,
-            polar_discount_details: polarDiscount
+            message: "Voucher created successfully!" + (polarSyncError ? ` Polar sync failed: ${polarSyncError}` : (polarDiscount ? " Synced with Polar." : " Not synced with Polar (status not 'open' or archived).")),
+            voucher: newVoucher,
+            polar_synced: !!polarDiscount && !polarSyncError,
+            polar_discount_id: polarDiscount ? polarDiscount.id : null,
+            polar_sync_error: polarSyncError
         });
 
     } catch (error) {
-        await session.abortTransaction();
+        if (session.inTransaction()) {
+            await session.abortTransaction();
+        }
         session.endSession();
-        console.error('[CreateVoucher] ❌ Server error during voucher creation:', error);
-        errorLogs(req, res, error.message, "controllers/voucherControllers/createVoucer.js");
+        console.error('[CreateVoucherCtrl] ❌ Server error during voucher creation:', error);
+        errorLogs(req, res, error.message, "controllers/voucerControllers/createVoucer.js"); // Nama file asli
         res.status(500).json({ message: "Server error", error: error.message });
     }
 };

@@ -12,11 +12,17 @@ const getPaymentStatsController = require('../controllers/paymentControllers/get
 const polarProductController = require('../controllers/paymentControllers/polarProductController');
 const { protect, protectAdmin } = require("../middlewares/authentication");
 
-// Webhook routes - no auth required
-router.post("/webhook/polar", callbackPaymentController.polarWebhook);
+// Webhook routes
+// PENTING: Gunakan express.raw() untuk endpoint webhook Polar SEBELUM body parser JSON global
+// agar kita bisa mendapatkan raw body untuk verifikasi signature.
+router.post(
+    "/webhook/polar", 
+    express.raw({ type: 'application/json' }), // Terima body sebagai Buffer/string
+    callbackPaymentController.polarWebhook
+);
 // http://localhost:3876/be/api/payments/webhook/polar
 
-// Legacy callback (for backward compatibility)
+// Legacy callback (jika masih digunakan)
 router.post("/callback", callbackPaymentController.paymentCallBack);
 // http://localhost:3876/be/api/payments/callback
 
@@ -34,13 +40,13 @@ router.get("/get/:id", protectAdmin, getPaymentByIdController.getPaymentById);
 router.delete("/delete/:id", protectAdmin, deletePaymentController.deletePayment);
 // http://localhost:3876/be/api/payments/delete/:id
 
-router.put("/update/:id", protectAdmin, updatePaymentController.updateUserPayment);
+router.put("/update/:id", protectAdmin, updatePaymentController.updateUserPayment); // Pastikan ini adalah handler yang benar
 // http://localhost:3876/be/api/payments/update/:id
 
 router.get("/stats", protectAdmin, getPaymentStatsController.getPaymentStats);
 // http://localhost:3876/be/api/payments/stats
 
-// Polar integration routes
+// Polar integration routes (sinkronisasi produk/paket)
 router.post("/polar/sync-package/:packageId", protectAdmin, polarProductController.syncPackageWithPolar);
 // http://localhost:3876/be/api/payments/polar/sync-package/:packageId
 
@@ -51,4 +57,3 @@ router.get("/polar/product-info/:packageId", protectAdmin, polarProductControlle
 // http://localhost:3876/be/api/payments/polar/product-info/:packageId
 
 module.exports = router;
-

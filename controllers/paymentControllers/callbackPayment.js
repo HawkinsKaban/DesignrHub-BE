@@ -1,334 +1,409 @@
 // controllers/paymentControllers/callbackPayment.js
-
 const mongoose = require("mongoose");
 const PaymentModel = require("../../models/paymentModel");
 const PackageModel = require("../../models/packageModel");
 const UserModel = require("../../models/userModel");
-const VoucherModel = require("../../models/voucerModel"); // Tambahkan VoucherModel
+const VoucherModel = require("../../models/voucerModel"); // Pastikan nama model konsisten
 const { errorLogs } = require("../../utils/errorLogs");
-const { createLogAction } = require("../logControllers/createLog");
+const { createLogAction } = require("../logControllers/createLog"); // Pastikan path ini benar
 const polarService = require("../../services/polarService");
 require("dotenv").config();
 
-// Polar webhook handler
+
+// Handler untuk webhook Polar.sh
 exports.polarWebhook = async (req, res) => {
+    console.log("[Polar Webhook] Received an event from Polar.");
+    
+    const signatureHeader = req.headers['polar-signature'] || req.headers['x-polar-signature']; // Header bisa bervariasi
+    let rawBody = req.body; // Ini harusnya raw body (Buffer atau string)
+
+    // Jika menggunakan express.raw(), req.body sudah Buffer/string.
+    // Jika tidak, dan body sudah di-parse oleh express.json(), Anda perlu cara lain untuk mendapatkan raw body.
+    // Asumsikan rawBody sudah benar.
+
     try {
-        console.log("[Polar Webhook] Received event.");
-        // Log raw body for signature debugging if needed, but be careful with sensitive data in production logs
-        // console.log("[Polar Webhook] Raw body:", req.body); // Jika req.body adalah object, JSON.stringify(req.body)
-        
-        const signature = req.headers['x-polar-signature'] || req.headers['polar-signature'];
-        
-        if (!signature && process.env.NODE_ENV === 'production') { // Lebih ketat di produksi
-            console.warn("[Polar Webhook] Signature missing in production environment.");
-            return res.status(401).json({ message: "Signature missing" });
+        // Verifikasi signature webhook
+        const validatedEvent = polarService.verifyWebhookSignature(rawBody, signatureHeader);
+        if (!validatedEvent && process.env.NODE_ENV === 'production') { // Lebih ketat di produksi
+            console.warn("[Polar Webhook] Invalid webhook signature. Request will be ignored.");
+            return res.status(403).json({ message: "Invalid signature or secret not configured for production." });
+        }
+        if (!validatedEvent && process.env.NODE_ENV !== 'production' && !process.env.POLAR_WEBHOOK_SECRET) {
+            console.warn("[Polar Webhook] Signature not verified (secret not set, non-production). Processing for testing.");
+        } else if (!validatedEvent) {
+             console.warn("[Polar Webhook] Invalid webhook signature (secret IS set or in production). Request will be ignored.");
+            return res.status(403).json({ message: "Invalid signature." });
         }
         
-        // Di environment non-produksi, kita mungkin ingin mengizinkan tanpa signature untuk testing
-        if (signature || process.env.NODE_ENV === 'production') { // Selalu verifikasi jika signature ada atau jika di produksi
-            const isValid = polarService.verifyWebhookSignature(req.body, signature);
-            if (!isValid) {
-                console.warn("[Polar Webhook] Invalid webhook signature.");
-                return res.status(401).json({ message: "Invalid signature" });
-            }
-             console.log("[Polar Webhook] Signature verified successfully.");
-        } else {
-            console.warn("[Polar Webhook] Skipping signature verification (NODE_ENV is not production and no signature provided).");
+        // Jika validatedEvent adalah object event dari SDK (setelah parse & validasi)
+        const eventType = validatedEvent.type;
+        const eventData = validatedEvent.data; // atau validatedEvent.data.object tergantung struktur dari Polar SDK
+        
+        console.log(`[Polar Webhook] Signature VERIFIED. Event Type: ${eventType}, Data ID: ${eventData?.id || 'N/A'}`);
+
+        // Respon cepat ke Polar bahwa webhook diterima sebelum pemrosesan panjang
+        res.status(202).json({ received: true, message: "Webhook received, processing started." });
+
+        // Pemrosesan event secara asinkron (idealnya, ini akan di-offload ke queue/worker)
+        // Untuk sekarang, kita proses langsung tapi setelah mengirim respons 202.
+        processWebhookEvent(eventType, eventData, req).catch(processingError => {
+            console.error("[Polar Webhook] ❌ Asynchronous processing error after 202 response:", processingError);
+            // Log error ini secara internal, Polar sudah menerima 202.
+            errorLogs(req, null, processingError.message, "controllers/paymentControllers/callbackPayment.js - processWebhookEvent Async");
+        });
+
+    } catch (error) { // Error pada level penerimaan webhook (misal, parsing body jika tidak raw)
+        console.error("[Polar Webhook] ❌ Error handling webhook request (outer level):", error);
+        errorLogs(req, res, error.message, "controllers/paymentControllers/callbackPayment.js - Outer Catch");
+        // Jangan kirim 400 jika sudah mengirim 202. Jika error sebelum 202:
+        if (!res.headersSent) {
+            res.status(400).json({ message: "Webhook error: Invalid payload or signature issue." });
         }
-
-
-        const session = await mongoose.startSession();
-        session.startTransaction();
-
-        try {
-            const { type: eventType, data } = req.body; // Polar menggunakan 'type' untuk event
-            console.log(`[Polar Webhook] Event Type: ${eventType}, Data ID: ${data?.id || 'unknown'}`);
-
-            switch (eventType) {
-                case 'checkout_session.completed': // Atau event yang sesuai dari Polar untuk pembayaran sukses
-                case 'order.paid': // Event lain yang mungkin dari Polar
-                case 'subscription.created': // Jika langganan dibuat
-                case 'subscription.updated': // Jika langganan diperbarui (misal, pembayaran berhasil)
-                    await handleSuccessfulPayment(data, eventType, session, req);
-                    break;
-
-                case 'checkout_session.expired':
-                case 'order.payment_failed':
-                    await handleFailedPayment(data, eventType, session);
-                    break;
-
-                default:
-                    console.log(`[Polar Webhook] Unhandled event type: ${eventType}`);
-            }
-
-            await session.commitTransaction();
-            session.endSession();
-            return res.status(200).json({ received: true, message: "Webhook processed." });
-        } catch (error) {
-            await session.abortTransaction();
-            session.endSession();
-            console.error("[Polar Webhook] ❌ Error processing webhook event:", error);
-            // Tetap kembalikan 200 agar Polar tidak mencoba mengirim ulang terus-menerus
-            // Error sudah dicatat di server.
-            return res.status(200).json({ 
-                received: true, 
-                error: "Internal server error during webhook processing.",
-                errorMessage: error.message 
-            });
-        }
-    } catch (outerError) { // Error sebelum transaksi dimulai (misal: JSON parsing)
-        console.error("[Polar Webhook] ❌ Outer error processing webhook:", outerError);
-        errorLogs(req, res, outerError.message, "controllers/paymentControllers/callbackPayment.js - Outer Catch");
-        return res.status(400).json({ message: "Invalid webhook payload or server error." });
     }
 };
 
-async function handleSuccessfulPayment(eventData, eventType, session, req) {
-    // Polar mengirim data order atau checkout session dalam `eventData`
-    // Kita perlu mencari payment record kita berdasarkan referensi yang kita simpan
-    // Misalnya, jika kita menyimpan polar_checkout_id saat membuat payment.
-    
+async function processWebhookEvent(eventType, eventData, req) {
+    const session = await mongoose.startSession();
+    session.startTransaction();
     let paymentReferenceId = null;
     let orderIdForLog = null;
+    let isSuccessEvent = false;
 
-    if (eventType === 'checkout_session.completed' && eventData.id) {
-        paymentReferenceId = eventData.id; // ID dari checkout session
-        orderIdForLog = eventData.order_id || eventData.id;
-    } else if (eventType === 'order.paid' && eventData.id) {
-        paymentReferenceId = eventData.checkout_id || eventData.id; // Bisa jadi checkout_id atau order_id tergantung struktur data Polar
-        orderIdForLog = eventData.id;
-    } else if ((eventType === 'subscription.created' || eventType === 'subscription.updated') && eventData.latest_invoice?.payment_intent?.id) {
-        // Untuk langganan, mungkin perlu logika berbeda untuk mencari payment record
-        // Asumsi kita punya cara untuk menghubungkan invoice/payment_intent ke payment record kita
-        // Untuk contoh ini, kita asumsikan ada checkout_id di metadata subscription
-        paymentReferenceId = eventData.metadata?.checkout_id || eventData.id;
-        orderIdForLog = eventData.id; // Subscription ID
-    } else {
-        console.log(`[Webhook Success] Unclear payment reference from event type ${eventType} and data:`, eventData);
-        return;
-    }
+    try {
+        console.log(`[ProcessWebhook] Starting to process event: ${eventType}`);
+        switch (eventType) {
+            case 'checkout.session.completed': // Event dari Polar SDK/API v2 mungkin berbeda
+            case 'checkout_session.completed': // Jaga-jaga jika ada variasi nama
+                paymentReferenceId = eventData.id; // ID Checkout Session
+                orderIdForLog = eventData.order_id || eventData.id;
+                isSuccessEvent = (eventData.status === 'complete' && eventData.payment_status === 'paid');
+                if (isSuccessEvent) {
+                    await handleSuccessfulPayment(eventData, eventType, session, req, orderIdForLog);
+                } else {
+                    console.log(`[ProcessWebhook] Checkout session ${paymentReferenceId} completed but not marked as paid. Status: ${eventData.status}, Payment Status: ${eventData.payment_status}`);
+                    await handleFailedOrPendingPayment(eventData, eventType, session, 'pending_confirmation'); // Atau status lain yang sesuai
+                }
+                break;
 
-    if (!paymentReferenceId) {
-        console.log(`[Webhook Success] No valid payment reference ID found in eventData for event ${eventType}.`);
-        return;
+            case 'order.succeeded': // Event jika order berhasil (mungkin termasuk pembayaran)
+            case 'order.paid':
+                paymentReferenceId = eventData.checkout_session_id || eventData.checkout_id || eventData.metadata?.polar_checkout_id; // Cari checkout_id dari order
+                orderIdForLog = eventData.id; // ID Order
+                if (!paymentReferenceId && eventData.metadata?.internal_invoice) {
+                    // coba cari payment berdasarkan invoice jika checkout_id tidak ada
+                    const tempPayment = await PaymentModel.findOne({invoice: eventData.metadata.internal_invoice});
+                    if(tempPayment) paymentReferenceId = tempPayment.polar_checkout_id;
+                }
+                 if (!paymentReferenceId) {
+                    console.warn(`[ProcessWebhook] Could not determine checkout_session_id for order.paid event ${orderIdForLog}. Metadata:`, eventData.metadata);
+                    // Jika tidak ada checkout_id, mungkin perlu logika lain untuk mencari payment lokal
+                    // misalnya berdasarkan metadata.payment_id_internal jika Anda menyimpannya.
+                    // Untuk sekarang, kita log dan skip jika tidak ada referensi jelas.
+                    throw new Error(`Missing checkout reference for order.paid event: ${orderIdForLog}`);
+                }
+                await handleSuccessfulPayment(eventData, eventType, session, req, orderIdForLog, paymentReferenceId);
+                break;
+            
+            // Handle langganan
+            case 'subscription.created':
+            case 'subscription.updated':
+                // Untuk langganan, pembayaran mungkin ditangani oleh invoice.paid atau charge.succeeded
+                // Kita perlu memastikan apakah event ini berarti pembayaran berhasil.
+                // Biasanya, `status: 'active'` dan ada `latest_invoice` yang `paid`.
+                paymentReferenceId = eventData.metadata?.polar_checkout_id || eventData.checkout_id; // Cari checkout_id dari metadata langganan
+                orderIdForLog = eventData.id; // Subscription ID
+
+                if (eventData.status === 'active' && (eventData.latest_invoice?.paid || eventData.latest_invoice?.status === 'paid')) {
+                    console.log(`[ProcessWebhook] Active subscription event: ${eventType}, ID: ${orderIdForLog}. Assuming payment successful.`);
+                     if (!paymentReferenceId && eventData.metadata?.internal_invoice) {
+                        const tempPayment = await PaymentModel.findOne({invoice: eventData.metadata.internal_invoice});
+                        if(tempPayment) paymentReferenceId = tempPayment.polar_checkout_id;
+                    }
+                    if (!paymentReferenceId) {
+                        console.warn(`[ProcessWebhook] Could not determine checkout_session_id for subscription event ${orderIdForLog}.`);
+                        // Coba cari payment record berdasarkan metadata jika ada (misal, user_id dan package_id dari checkout awal)
+                        // Ini lebih kompleks dan mungkin perlu disimpan saat checkout awal jika langganan dibuat langsung.
+                        // Untuk saat ini, jika tidak ada ref checkout, kita tidak bisa update payment record spesifik.
+                        // Namun, kita tetap bisa mengupdate status langganan user jika `external_id` customer ada.
+                        const userToUpdate = await UserModel.findOne({ polarCustomerId: eventData.customer_id });
+                        if(userToUpdate) {
+                            // Logika update langganan user langsung tanpa payment record (jika perlu)
+                            console.log(`[ProcessWebhook] Updating user ${userToUpdate._id} subscription status directly from subscription event.`);
+                            // (Tambahkan logika update user subscription di sini jika dibutuhkan)
+                        } else {
+                             throw new Error(`Missing checkout reference and user for subscription event: ${orderIdForLog}`);
+                        }
+                    } else {
+                        await handleSuccessfulPayment(eventData, eventType, session, req, orderIdForLog, paymentReferenceId);
+                    }
+                } else {
+                    console.log(`[ProcessWebhook] Subscription event ${eventType} for ${orderIdForLog} received, but not clearly indicating a successful payment (Status: ${eventData.status}, Latest Invoice: ${eventData.latest_invoice?.status}).`);
+                }
+                break;
+
+            case 'checkout.session.expired':
+            case 'checkout_session.expired':
+                paymentReferenceId = eventData.id;
+                orderIdForLog = eventData.id;
+                await handleFailedOrPendingPayment(eventData, eventType, session, 'expired');
+                break;
+            
+            case 'order.payment_failed':
+                paymentReferenceId = eventData.checkout_session_id || eventData.checkout_id || eventData.metadata?.polar_checkout_id;
+                orderIdForLog = eventData.id;
+                 if (!paymentReferenceId && eventData.metadata?.internal_invoice) {
+                    const tempPayment = await PaymentModel.findOne({invoice: eventData.metadata.internal_invoice});
+                    if(tempPayment) paymentReferenceId = tempPayment.polar_checkout_id;
+                }
+                await handleFailedOrPendingPayment(eventData, eventType, session, 'failed');
+                break;
+
+            default:
+                console.log(`[ProcessWebhook] Unhandled event type: ${eventType}. Data:`, JSON.stringify(eventData, null, 2));
+        }
+
+        await session.commitTransaction();
+    } catch (error) {
+        await session.abortTransaction();
+        console.error(`[ProcessWebhook] ❌ Error processing event ${eventType} (Ref: ${paymentReferenceId || orderIdForLog}):`, error);
+        errorLogs(req, null, `Webhook processing error for event ${eventType}: ${error.message}`, "controllers/paymentControllers/callbackPayment.js - processWebhookEvent");
+        // Tidak re-throw agar tidak mengganggu respons 202 yang sudah dikirim
+    } finally {
+        session.endSession();
+        console.log(`[ProcessWebhook] Finished processing event: ${eventType}`);
     }
-    
-    console.log(`[Webhook Success] Processing successful payment. Event: ${eventType}, Ref ID: ${paymentReferenceId}, Order/Data ID: ${orderIdForLog}`);
+}
+
+
+async function handleSuccessfulPayment(eventData, eventType, session, req, orderOrSubId, checkoutSessionIdForLookup = null) {
+    // `checkoutSessionIdForLookup` digunakan jika event type bukan checkout.session.completed
+    // tapi kita punya ID checkout dari metadata order/subscription.
+    const paymentLookupId = checkoutSessionIdForLookup || eventData.id; // ID untuk mencari PaymentModel
+
+    console.log(`[WebhookSuccess] Processing successful payment. Event: ${eventType}, Polar Order/Sub ID: ${orderOrSubId}, PaymentLookupRef (CheckoutSessionID): ${paymentLookupId}`);
 
     const payment = await PaymentModel.findOne({
-        polar_checkout_id: paymentReferenceId // Cari berdasarkan ID checkout Polar
+        polar_checkout_id: paymentLookupId 
     }).session(session);
 
     if (!payment) {
-        console.warn(`[Webhook Success] Payment record not found for Polar checkout ID: ${paymentReferenceId}`);
-        // Mungkin ini adalah pembayaran yang tidak diinisiasi oleh sistem kita atau sudah diproses
-        return;
+        console.warn(`[WebhookSuccess] Payment record not found for Polar Checkout ID: ${paymentLookupId}. Event: ${eventType}, Polar Order/Sub ID: ${orderOrSubId}`);
+        // Jika metadata eventData memiliki user_id_internal atau package_id_internal, kita bisa coba cari atau log.
+        if (eventData.metadata?.user_id_internal && eventData.metadata?.package_id_internal) {
+            console.log(`[WebhookSuccess] Event metadata contains internal IDs: User ${eventData.metadata.user_id_internal}, Package ${eventData.metadata.package_id_internal}. A manual check might be needed if no payment record is found via checkout_id.`);
+        }
+        // Pertimbangkan apakah ini error yang harus menghentikan transaksi atau cukup log.
+        // Jika ini adalah langganan yang diperpanjang otomatis, mungkin tidak ada checkout_id baru.
+        // Dalam kasus itu, Anda perlu mencari berdasarkan subscription_id.
+        if (eventType.startsWith('subscription.') && eventData.id) {
+            const subPayment = await PaymentModel.findOne({ polar_subscription_id: eventData.id, payment_status: {$ne: 'paid'} }).sort({createdAt: -1}).session(session);
+            if(subPayment){
+                console.log(`[WebhookSuccess] Found existing payment record ${subPayment._id} via subscription ID ${eventData.id} for renewal.`);
+                // Lanjutkan dengan subPayment
+            } else {
+                 console.warn(`[WebhookSuccess] No pending payment record found for subscription renewal ID: ${eventData.id}. This might be a new subscription or an issue.`);
+                 // Jika ini subscription.created, mungkin perlu membuat payment record baru? Atau pastikan payment record dibuat saat checkout awal.
+                 // Untuk sekarang, kita return jika tidak ada payment record terkait.
+                 return;
+            }
+        } else {
+            return; // Atau throw error jika payment record wajib ada.
+        }
     }
 
+
     if (payment.payment_status === 'paid') {
-        console.log(`[Webhook Success] Payment ${payment._id} (Polar Ref: ${paymentReferenceId}) already marked as paid. Skipping.`);
+        console.log(`[WebhookSuccess] Payment ${payment._id} (Polar Checkout ID: ${paymentLookupId}) already marked as paid. Skipping to avoid double processing. Event: ${eventType}`);
         return;
     }
 
     payment.payment_status = 'paid';
     payment.updatedBy = 'webhook';
-    // Update dengan data order/subscription dari Polar jika ada
-    payment.polar_order_id = eventData.order_id || (eventType === 'order.paid' ? eventData.id : payment.polar_order_id);
-    payment.polar_subscription_id = eventData.subscription_id || (eventType.startsWith('subscription.') ? eventData.id : payment.polar_subscription_id);
     
-    // Tambahkan lebih banyak detail dari eventData ke polar_metadata payment jika perlu
-    payment.polar_metadata.webhook_event_type = eventType;
-    payment.polar_metadata.webhook_event_data = eventData; // Simpan semua data event
-    
-    await payment.save({ session });
-    console.log(`[Webhook Success] Payment ${payment._id} status updated to 'paid'.`);
+    // Update dengan detail dari event Polar
+    if (eventType.includes('order') && eventData.id) {
+        payment.polar_order_id = eventData.id;
+    } else if (eventData.order_id) { // Dari checkout_session.completed
+        payment.polar_order_id = eventData.order_id;
+    }
+    if (eventType.startsWith('subscription') && eventData.id) {
+        payment.polar_subscription_id = eventData.id;
+    } else if (eventData.subscription_id) { // Dari checkout_session.completed jika menghasilkan langganan
+        payment.polar_subscription_id = eventData.subscription_id;
+    }
+    // Simpan customer ID Polar dari event jika ada
+    if(eventData.customer_id) payment.polar_customer_id = eventData.customer_id;
 
-    // Increment voucher usage if a voucher was applied to this payment
+
+    // Update metadata payment dengan detail event webhook
+    payment.polar_metadata.webhook_event_type = eventType;
+    payment.polar_metadata.webhook_event_data = eventData; // Simpan seluruh data event
+    payment.polar_metadata.webhook_processed_at = new Date().toISOString();
+    
+    // Pastikan payment_time diisi jika belum (walaupun default-nya Date.now saat create)
+    if (!payment.payment_time) payment.payment_time = new Date();
+
+
+    await payment.save({ session });
+    console.log(`[WebhookSuccess] Payment ${payment._id} status updated to 'paid'.`);
+
+    // Increment voucher usage
     if (payment.voucher_id) {
         const voucher = await VoucherModel.findById(payment.voucher_id).session(session);
         if (voucher) {
             voucher.timesUsed = (voucher.timesUsed || 0) + 1;
             await voucher.save({ session });
-            console.log(`[Webhook Success] Voucher ${voucher.code} (ID: ${voucher._id}) timesUsed incremented to ${voucher.timesUsed}.`);
+            console.log(`[WebhookSuccess] Voucher ${voucher.code} (ID: ${voucher._id}) timesUsed incremented to ${voucher.timesUsed}.`);
         } else {
-            console.warn(`[Webhook Success] Voucher with ID ${payment.voucher_id} not found for payment ${payment._id}.`);
+            console.warn(`[WebhookSuccess] Voucher with ID ${payment.voucher_id} not found for payment ${payment._id}.`);
         }
     }
 
-    const [user, packageDetails] = await Promise.all([ // Ganti nama 'package' menjadi 'packageDetails'
+    const [user, packageDetails] = await Promise.all([
         UserModel.findById(payment.userId).session(session),
         PackageModel.findById(payment.package_id).session(session)
     ]);
 
     if (!user || !packageDetails) {
-        console.error(`[Webhook Success] User or package not found for payment: ${payment._id}. User: ${user?._id}, Package: ${packageDetails?._id}`);
-        // Ini adalah error serius, mungkin perlu rollback atau notifikasi admin
-        throw new Error("User or Package not found during webhook processing.");
+        console.error(`[WebhookSuccess] CRITICAL: User (ID: ${payment.userId}) or Package (ID: ${payment.package_id}) not found for payment: ${payment._id}. This should not happen.`);
+        throw new Error("User or Package not found during successful webhook processing.");
     }
 
+    // Logika aktivasi/perpanjangan langganan pengguna
+    // (Menggunakan logika yang sudah ada dari updatePayment.js, disederhanakan dan disesuaikan)
     const currentDate = new Date();
-    let newExpiredTime = new Date(currentDate); // Mulai dari tanggal saat ini
-    newExpiredTime.setDate(currentDate.getDate() + packageDetails.durationInDays);
+    let newExpiryDateForThisPackage = new Date(currentDate);
+    newExpiryDateForThisPackage.setDate(currentDate.getDate() + packageDetails.durationInDays);
 
-    const newSubscriptionEntry = { // Ganti nama 'newPackage' menjadi 'newSubscriptionEntry'
+    const newActivePackageEntry = {
         packageId: packageDetails._id,
-        activeDate: newExpiredTime,
+        activeDate: newExpiryDateForThisPackage, // Tanggal kedaluwarsa untuk *entri paket ini*
         priority: packageDetails.priority,
         statusActive: true,
         pendingDate: 0,
     };
 
-    if (!Array.isArray(user.activePackage) || user.activePackage.length === 0) {
-        user.activePackage = [newSubscriptionEntry];
-    } else {
-        // Logika penanganan paket aktif yang sudah ada
-        // (Mempertahankan logika yang ada, namun pastikan perbandingan ObjectId aman)
-        const existingPackageIndex = user.activePackage.findIndex(
-            item => item.packageId && item.packageId.equals(packageDetails._id) // Perbandingan ObjectId yang aman
+    let existingPackageIndex = -1;
+    if (user.activePackage && user.activePackage.length > 0) {
+        existingPackageIndex = user.activePackage.findIndex(
+            pkg => pkg.packageId && pkg.packageId.equals(packageDetails._id)
         );
-
-        if (existingPackageIndex !== -1 && user.activePackage[existingPackageIndex].priority === packageDetails.priority) {
-            // Paket yang sama, perpanjang
-            const currentActiveDate = user.activePackage[existingPackageIndex].activeDate;
-            let baseDateForExtension = new Date(); // Default ke hari ini jika tidak ada tanggal aktif atau sudah lewat
-
-            if (currentActiveDate && new Date(currentActiveDate) > baseDateForExtension) {
-                baseDateForExtension = new Date(currentActiveDate);
-            }
-            
-            const extendedExpiredTime = new Date(baseDateForExtension);
-            extendedExpiredTime.setDate(baseDateForExtension.getDate() + packageDetails.durationInDays);
-            
-            user.activePackage[existingPackageIndex].activeDate = extendedExpiredTime;
-            user.activePackage[existingPackageIndex].statusActive = true; // Pastikan aktif
-            newExpiredTime = extendedExpiredTime; // Update newExpiredTime untuk user.premiumExpiresAt
-             console.log(`[Webhook Success] Extended existing package ${packageDetails.packageName} for user ${user._id}. New expiry: ${newExpiredTime}`);
-        } else {
-            // Paket baru atau paket dengan prioritas berbeda, tambahkan ke array
-            // dan biarkan logika sorting dan penentuan premiumExpiresAt di bawah yang menanganinya.
-             user.activePackage.push(newSubscriptionEntry);
-             console.log(`[Webhook Success] Added new/different package ${packageDetails.packageName} for user ${user._id}.`);
-        }
+    } else {
+        user.activePackage = [];
     }
     
-    // Urutkan berdasarkan prioritas (tertinggi dulu), lalu berdasarkan tanggal aktif (terbaru dulu jika prioritas sama)
+
+    if (existingPackageIndex !== -1) {
+        // Paket yang sama sudah ada, perpanjang durasinya
+        const currentActiveDate = user.activePackage[existingPackageIndex].activeDate;
+        let baseDateForExtension = (currentActiveDate && new Date(currentActiveDate) > currentDate) ? new Date(currentActiveDate) : new Date(currentDate);
+        
+        const extendedExpiredTime = new Date(baseDateForExtension);
+        extendedExpiredTime.setDate(baseDateForExtension.getDate() + packageDetails.durationInDays);
+        
+        user.activePackage[existingPackageIndex].activeDate = extendedExpiredTime;
+        user.activePackage[existingPackageIndex].statusActive = true;
+        user.activePackage[existingPackageIndex].pendingDate = 0; // Reset pending jika diaktifkan/diperpanjang
+        newExpiryDateForThisPackage = extendedExpiredTime; // Update tanggal kedaluwarsa utama
+        console.log(`[WebhookSuccess] Extended existing package ${packageDetails.packageName} for user ${user.username}. New expiry: ${newExpiryDateForThisPackage}`);
+    } else {
+        // Paket baru, tambahkan ke array
+        user.activePackage.push(newActivePackageEntry);
+        console.log(`[WebhookSuccess] Added new package ${packageDetails.packageName} to user ${user.username}.`);
+    }
+
+    // Sortir paket aktif berdasarkan prioritas (tertinggi dulu), lalu berdasarkan tanggal aktif (terbaru dulu)
     user.activePackage.sort((a, b) => {
         if (b.priority !== a.priority) {
             return b.priority - a.priority;
         }
-        // Jika prioritas sama, yang aktif duluan. Jika keduanya aktif/non-aktif, tanggal aktif menentukan.
-        if (a.statusActive && !b.statusActive) return -1;
-        if (!a.statusActive && b.statusActive) return 1;
-        return (b.activeDate || 0) - (a.activeDate || 0); // Mungkin perlu perbaikan
+        return (new Date(b.activeDate)).getTime() - (new Date(a.activeDate)).getTime();
     });
 
-    // Non-aktifkan paket dengan prioritas lebih rendah jika ada paket dengan prioritas lebih tinggi yang baru aktif
-    let topActivePackageFound = false;
-    user.activePackage.forEach(pkg => {
-        if (pkg.statusActive) {
-            if (!topActivePackageFound) {
-                user.premiumAccess = true;
-                user.isPremium = true;
-                user.subscriptionPackage = pkg.packageId;
-                user.premiumExpiresAt = pkg.activeDate; // Ini adalah tanggal kedaluwarsa dari paket prioritas tertinggi yang aktif
-                topActivePackageFound = true;
-                 console.log(`[Webhook Success] Top active package for user ${user._id} is ${pkg.packageId} expiring at ${pkg.activeDate}`);
-            } else {
-                // Jika sudah ada paket aktif dengan prioritas lebih tinggi, paket ini (jika aktif) harus jadi pending
-                // Logika ini mungkin perlu disempurnakan berdasarkan aturan bisnis yang lebih detail
-                // Untuk saat ini, asumsikan sort sudah benar dan premiumExpiresAt di-set oleh yang pertama aktif.
+    // Tentukan paket utama yang aktif dan tanggal kedaluwarsa premium
+    let topActivePackage = null;
+    for (const pkg of user.activePackage) {
+        if (pkg.statusActive && new Date(pkg.activeDate) > currentDate) {
+            if (!topActivePackage || pkg.priority > topActivePackage.priority || (pkg.priority === topActivePackage.priority && new Date(pkg.activeDate) > new Date(topActivePackage.activeDate))) {
+                topActivePackage = pkg;
             }
         }
-    });
-
-    if (!topActivePackageFound && user.activePackage.length > 0) {
-        // Jika tidak ada paket aktif tapi masih ada paket di array (semua pending),
-        // coba aktifkan yang paling atas (prioritas tertinggi)
-        const firstPending = user.activePackage[0];
-        firstPending.statusActive = true;
-        firstPending.activeDate = new Date(currentDate.getTime() + (firstPending.pendingDate * 24 * 60 * 60 * 1000));
-        firstPending.pendingDate = 0;
-
-        user.premiumAccess = true;
-        user.isPremium = true;
-        user.subscriptionPackage = firstPending.packageId;
-        user.premiumExpiresAt = firstPending.activeDate;
-        console.log(`[Webhook Success] Activated first pending package ${firstPending.packageId} for user ${user._id}. Expires: ${firstPending.activeDate}`);
-    } else if (!topActivePackageFound && user.activePackage.length === 0) {
-        // Tidak ada paket aktif dan tidak ada paket pending
-        user.premiumAccess = false;
-        user.isPremium = false;
-        user.subscriptionPackage = null;
-        user.premiumExpiresAt = null;
-        console.log(`[Webhook Success] User ${user._id} has no active or pending packages. Premium access removed.`);
     }
 
+    if (topActivePackage) {
+        user.isPremium = true;
+        user.premiumAccess = true;
+        user.subscriptionPackage = topActivePackage.packageId;
+        user.premiumExpiresAt = topActivePackage.activeDate;
+        console.log(`[WebhookSuccess] User ${user.username} premium access set. Package: ${topActivePackage.packageId}, Expires: ${topActivePackage.activeDate}`);
+    } else {
+        user.isPremium = false;
+        user.premiumAccess = false;
+        user.subscriptionPackage = null;
+        user.premiumExpiresAt = null;
+        console.log(`[WebhookSuccess] User ${user.username} has no current top active package. Premium access removed.`);
+    }
+    
+    // Pastikan polarCustomerId di user model terisi jika ada dari event
+    if (eventData.customer_id && !user.polarCustomerId) {
+        user.polarCustomerId = eventData.customer_id;
+    }
 
     await user.save({ session });
-    console.log(`[Webhook Success] User ${user._id} subscription details updated.`);
+    console.log(`[WebhookSuccess] User ${user.username} (ID: ${user._id}) subscription details updated successfully.`);
 
     try {
         await createLogAction(
             user._id,
-            `subscription_payment_success_${eventType.replace('.', '_')}`, // e.g., subscription_payment_success_checkout_session_completed
-            req?.ip || "webhook", // Ambil IP dari req jika ada
-            `Polar Webhook - Order/Data ID: ${orderIdForLog}`
+            `payment_success:${eventType}`,
+            req?.ip || "webhook_polar",
+            `Polar Event - Order/Sub ID: ${orderOrSubId}, Checkout ID: ${paymentLookupId}`
         );
     } catch (logError) {
-        console.error("[Webhook Success] Error creating log action:", logError);
+        console.error("[WebhookSuccess] Error creating log action for successful payment:", logError);
     }
 }
 
-async function handleFailedPayment(eventData, eventType, session) {
-    let paymentReferenceId = null;
+async function handleFailedOrPendingPayment(eventData, eventType, session, targetStatus) {
+    const paymentLookupId = eventType.startsWith('checkout') ? eventData.id : (eventData.checkout_session_id || eventData.checkout_id || eventData.metadata?.polar_checkout_id);
 
-    if (eventType === 'checkout_session.expired' && eventData.id) {
-        paymentReferenceId = eventData.id;
-    } else if (eventType === 'order.payment_failed' && eventData.id) {
-        paymentReferenceId = eventData.checkout_id || eventData.id;
-    } else {
-        console.log(`[Webhook Failed] Unclear payment reference from event type ${eventType} and data:`, eventData);
-        return;
-    }
-
-    if (!paymentReferenceId) {
-        console.log(`[Webhook Failed] No valid payment reference ID found in eventData for event ${eventType}.`);
+    if (!paymentLookupId) {
+        console.warn(`[WebhookFailOrPending] No valid payment reference ID found in eventData for event ${eventType}. Data:`, eventData);
         return;
     }
     
-    console.log(`[Webhook Failed] Processing failed/expired payment. Event: ${eventType}, Ref ID: ${paymentReferenceId}`);
+    console.log(`[WebhookFailOrPending] Processing ${targetStatus} payment. Event: ${eventType}, CheckoutRef ID: ${paymentLookupId}`);
 
     const payment = await PaymentModel.findOne({
-        polar_checkout_id: paymentReferenceId,
+        polar_checkout_id: paymentLookupId,
         payment_status: 'pending' // Hanya update jika masih pending
     }).session(session);
 
     if (!payment) {
-        console.warn(`[Webhook Failed] Pending payment record not found for Polar checkout ID: ${paymentReferenceId}, or already processed.`);
+        console.warn(`[WebhookFailOrPending] Pending payment record not found for Polar Checkout ID: ${paymentLookupId}, or already processed for event ${eventType}.`);
         return;
     }
 
-    const statusMap = {
-        'checkout_session.expired': 'expired',
-        'order.payment_failed': 'decline' // atau 'failed'
-    };
-
-    payment.payment_status = statusMap[eventType] || 'decline';
+    payment.payment_status = targetStatus; // 'expired', 'failed', 'pending_confirmation'
     payment.updatedBy = 'webhook';
     payment.polar_metadata.webhook_event_type = eventType;
     payment.polar_metadata.webhook_event_data = eventData;
+    payment.polar_metadata.webhook_processed_at = new Date().toISOString();
+    if(eventData.customer_id && !payment.polar_customer_id) payment.polar_customer_id = eventData.customer_id;
+
     await payment.save({ session });
 
-    console.log(`[Webhook Failed] Payment ${payment._id} status updated to '${payment.payment_status}'.`);
+    console.log(`[WebhookFailOrPending] Payment ${payment._id} status updated to '${payment.payment_status}' for event ${eventType}.`);
 }
 
-// Legacy callback handler
+
+// Legacy callback handler (Tripay) - bisa dipertahankan jika masih ada penggunaan
 exports.paymentCallBack = async (req, res) => {
-    console.log("[Legacy Callback] Tripay callback received, but system now uses Polar. This endpoint is for backward compatibility or specific Tripay integrations if any.");
-    // Jika Anda masih menggunakan Tripay untuk beberapa hal, implementasikan logikanya di sini.
-    // Jika tidak, cukup kembalikan respons bahwa ini tidak lagi digunakan.
+    console.log("[Legacy Tripay Callback] Received. System primarily uses Polar.sh webhooks.");
+    // Implementasikan logika Tripay di sini jika masih relevan.
+    // Jika tidak, cukup log dan kembalikan respons.
     return res.status(200).json({
-        success: true, // Tripay biasanya mengharapkan success:true
-        message: "Legacy callback received. System primarily uses Polar webhooks. No action taken by default unless specific Tripay logic is implemented here."
+        success: true,
+        message: "Legacy Tripay callback received. No action taken by default as Polar.sh is primary."
     });
 };

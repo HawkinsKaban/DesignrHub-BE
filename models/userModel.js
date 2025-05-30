@@ -1,6 +1,21 @@
+// models/userModel.js
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const validator = require("validator");
+
+const activePackageSchema = new mongoose.Schema({ // Definisikan skema untuk activePackage
+    packageId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Package",
+        required: true
+    },
+    activeDate: { type: Date, required: true }, // Tanggal kedaluwarsa paket ini
+    priority: { type: Number, required: true },
+    statusActive: { type: Boolean, default: true }, // Apakah paket ini sedang aktif digunakan
+    pendingDate: { type: Number, default: 0 }, // Durasi pending dalam hari (jika ditumpuk)
+    // Tambahkan field lain yang relevan untuk entri paket aktif jika ada
+}, { _id: false });
+
 
 const userSchema = new mongoose.Schema(
     {
@@ -27,28 +42,40 @@ const userSchema = new mongoose.Schema(
         reason: { type: String, default: null },
 
         // subscription information
-        isPremium: { type: Boolean, default: false },
+        isPremium: { type: Boolean, default: false }, // Apakah pengguna saat ini memiliki akses premium
         emailVerified: { type: Boolean, default: false },
-        premiumAccess: { type: Boolean, default: false },
-        premiumExpiresAt: { type: Date, default: null },
+        premiumAccess: { type: Boolean, default: false }, // Mungkin duplikat dengan isPremium, konsolidasikan jika perlu
+        premiumExpiresAt: { type: Date, default: null }, // Tanggal kedaluwarsa akses premium secara keseluruhan
         currentSessionToken: { type: String, default: null },
-        subscriptionPackage: {
+        
+        // subscriptionPackage menunjuk ke paket utama yang memberikan status premium saat ini
+        subscriptionPackage: { 
             type: mongoose.Schema.Types.ObjectId,
             ref: "Package",
             default: null
         },
+        // activePackage adalah array yang menyimpan semua langganan aktif/pending pengguna
+        activePackage: [activePackageSchema], 
 
-        // afiliator information
+        // Polar.sh customer ID
+        polarCustomerId: { 
+            type: String, 
+            trim: true, 
+            index: true, 
+            sparse: true // Memungkinkan null/undefined tapi unik jika ada isinya
+        },
+
+        // afiliator information (tetap seperti sebelumnya)
         isAfiliator: { type: Boolean, default: false },
         afiliatedBy: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: "UserAfiliator",
+            ref: "UserAfiliator", // Pastikan model UserAfiliator ada jika digunakan
             default: null
         },
-        codeAfiliator: [
+        codeAfiliator: [ // Ini tampak seperti array, mungkin seharusnya String atau Object jika kode afiliasi unik per user
             {
-                type: mongoose.Schema.Types.ObjectId,
-                ref: "UserAfiliator",
+                type: mongoose.Schema.Types.ObjectId, // Jika ini merujuk ke entitas lain
+                ref: "UserAfiliator", // atau model lain yang relevan
                 default: null
             }
         ],
@@ -57,11 +84,13 @@ const userSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
+// Indexes
 userSchema.index({ nomor: 1 });
 userSchema.index({ status: 1 });
 userSchema.index({ subscriptionPackage: 1 });
 userSchema.index({ afiliatedBy: 1 });
 userSchema.index({ expireAfiliator: 1 });
+userSchema.index({ polarCustomerId: 1 }); // Index untuk polarCustomerId
 
 // 🔥 Index untuk Pencarian Text di Username & Email
 userSchema.index({ username: "text", email: "text" });

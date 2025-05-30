@@ -1,21 +1,20 @@
-// hawkinskaban/designrhub-be/DesignrHub-BE-b6b71c7cbe6c9bb82dbe45c75398166882decdfc/services/polarService.js
-
-// Import functions directly from their respective modules
+// services/polarService.js
 const productsAPI = require('./polar/products');
 const customersAPI = require('./polar/customers');
 const checkoutsAPI = require('./polar/checkouts');
 const ordersAPI = require('./polar/orders');
 const discountsAPI = require('./polar/discounts');
-const client = require('./polar/client'); // The initialized Polar SDK client
+const client = require('./polar/client'); // SDK client instance
 
-// standardwebhooks is a dependency of @polar-sh/sdk, used for webhook verification
-const { Webhook } = require('standardwebhooks');
+// standardwebhooks untuk verifikasi webhook
+// const { Webhook } = require('standardwebhooks');
+// Atau, jika SDK Polar menyediakan utilitasnya sendiri:
+const { validateEvent, WebhookVerificationError } = require('@polar-sh/sdk/webhooks');
+
 
 class PolarService {
     constructor() {
-        // The Polar SDK client is initialized in './polar/client.js'
-        // and used by the individual API modules (productsAPI, customersAPI, etc.)
-        console.log("PolarService class instantiated. Using direct imports from ./polar/ submodules.");
+        console.log("PolarService class instantiated. Using modules from ./polar/ sub-directory.");
     }
 
     // Customers
@@ -42,6 +41,11 @@ class PolarService {
 
     // Checkouts
     async createCheckout(checkoutData) {
+        // Pastikan checkoutData.line_items sudah benar formatnya
+        // Contoh: checkoutData.line_items = [{ price_id: "price_xxx", quantity: 1 }]
+        if (!checkoutData.line_items) { // atau `!checkoutData.products` tergantung SDK
+            throw new Error("line_items (or products) are required for creating checkout.");
+        }
         return checkoutsAPI.createCheckout(checkoutData);
     }
     async getCheckout(checkoutId) {
@@ -63,21 +67,20 @@ class PolarService {
     async archiveDiscount(discountId) {
         return discountsAPI.archiveDiscount(discountId);
     }
-
-    // Subscriptions
-    // These methods will now call the Polar SDK client directly.
-    // The dummy client in your services/polar/client.js suggests these methods exist and take an ID directly.
+    
+    // Subscriptions (Langsung menggunakan client SDK)
     async getSubscription(subscriptionId) {
         if (client && client.subscriptions && typeof client.subscriptions.get === 'function') {
             try {
                 console.log(`[PolarService] Getting Polar subscription by ID: ${subscriptionId}`);
-                return await client.subscriptions.get(subscriptionId);
+                return await client.subscriptions.get(subscriptionId); // Asumsi SDK punya client.subscriptions.get({id: subscriptionId})
             } catch (error) {
+                // ... (error handling seperti yang sudah Anda miliki)
                 console.error(`[PolarService] ❌ Error getting Polar subscription (ID: ${subscriptionId}):`, error.message);
                 if (error.response && error.response.data) {
                     console.error("[PolarService] Polar Error Details for getSubscription:", JSON.stringify(error.response.data, null, 2));
                 }
-                throw new Error(`Failed to get subscription from Polar (ID: ${subscriptionId}): ${error.response?.data?.detail || error.message}`);
+                throw new Error(`Failed to get subscription from Polar (ID: ${subscriptionId}): ${error.response?.data?.detail || error.response?.data?.message || error.message}`);
             }
         }
         console.warn("[PolarService] getSubscription: Polar client or method not available.");
@@ -85,11 +88,12 @@ class PolarService {
     }
 
     async cancelSubscription(subscriptionId) {
-        if (client && client.subscriptions && typeof client.subscriptions.cancel === 'function') {
+         if (client && client.subscriptions && typeof client.subscriptions.cancel === 'function') {
             try {
                 console.log(`[PolarService] Canceling Polar subscription by ID: ${subscriptionId}`);
-                return await client.subscriptions.cancel(subscriptionId);
+                return await client.subscriptions.cancel(subscriptionId);  // Asumsi SDK punya client.subscriptions.cancel({id: subscriptionId})
             } catch (error) {
+                // ... (error handling seperti yang sudah Anda miliki)
                 console.error(`[PolarService] ❌ Error canceling Polar subscription (ID: ${subscriptionId}):`, error.message);
                 if (error.response && error.response.data) {
                     console.error("[PolarService] Polar Error Details for cancelSubscription:", JSON.stringify(error.response.data, null, 2));
@@ -102,25 +106,36 @@ class PolarService {
     }
 
     // Webhooks
-    verifyWebhookSignature(payload, signatureHeader) {
-        // Ensure POLAR_WEBHOOK_SECRET is available in your .env file
+    verifyWebhookSignature(rawBody, signatureHeader) {
         const secret = process.env.POLAR_WEBHOOK_SECRET;
         if (!secret) {
-            console.error("[PolarService] POLAR_WEBHOOK_SECRET is not configured. Cannot verify webhook signature.");
-            return false;
+            console.error("[PolarService] CRITICAL: POLAR_WEBHOOK_SECRET is not configured. Cannot verify webhook signature.");
+            // Di produksi, ini harusnya menghasilkan error atau setidaknya flag bahwa verifikasi tidak bisa dilakukan.
+            // Jika tidak ada secret, dan kita di produksi, verifikasi harus gagal.
+            if (process.env.NODE_ENV === 'production') return false;
+            // Di non-prod, jika tidak ada secret, kita bisa log warning dan return true (untuk testing lokal tanpa ngrok/secret)
+            // TAPI ini berisiko jika tidak sengaja terdeploy.
+            console.warn("[PolarService] POLAR_WEBHOOK_SECRET not set. Skipping signature verification (non-production only with this setting).");
+            return true; // HATI-HATI dengan ini di production.
         }
 
         try {
-            const wh = new Webhook(secret);
-            
-            // The 'payload' should be the raw request body (Buffer or string).
-            // 'signatureHeader' is the value of the 'Polar-Signature' or 'X-Polar-Signature' header.
-            // The verify method will throw an error if verification fails.
-            wh.verify(payload, signatureHeader); 
-            console.log("[PolarService] Webhook signature verified successfully.");
-            return true;
-        } catch (err) {
-            console.error("[PolarService] Webhook signature verification failed:", err.message);
+            // Menggunakan utilitas dari @polar-sh/sdk/webhooks
+            // `rawBody` harus berupa Buffer atau string mentah
+            // `signatureHeader` adalah nilai dari header 'Polar-Signature'
+            const event = validateEvent(
+                rawBody, // ini harus raw body (Buffer atau string)
+                { 'polar-signature': signatureHeader }, // headers object
+                secret
+            );
+            console.log("[PolarService] Webhook signature verified successfully using @polar-sh/sdk/webhooks.");
+            return event; // Mengembalikan event yang sudah divalidasi dan di-parse
+        } catch (error) {
+            if (error instanceof WebhookVerificationError) {
+                console.error("[PolarService] Webhook signature verification failed (WebhookVerificationError):", error.message);
+            } else {
+                console.error("[PolarService] An unexpected error occurred during webhook signature verification:", error.message);
+            }
             return false;
         }
     }
