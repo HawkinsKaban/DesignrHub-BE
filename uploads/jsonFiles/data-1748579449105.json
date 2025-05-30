@@ -1,0 +1,2229 @@
+{
+	"info": {
+		"_postman_id": "e40d3e5b-b825-4aee-89ee-082fc0e743cf",
+		"name": "DesignrHub API (Polar.sh Updated)",
+		"description": "A comprehensive collection for interacting with the DesignrHub Backend API, updated with Polar.sh integration and USD currency.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "44192925",
+		"_collection_link": "https://rayjob.postman.co/workspace/ReacteevID~3a2c7ef9-e234-4537-8310-a7a95682a006/collection/44192925-e40d3e5b-b825-4aee-89ee-082fc0e743cf?action=share&source=collection_link&creator=44192925"
+	},
+	"item": [
+		{
+			"name": "1. Authentication",
+			"item": [
+				{
+					"name": "Register User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{ \n    \"username\" : \"JorLojorsUSD\", \n    \"email\" : \"nugas123usd@gmail.com\", \n    \"password\" : \"Abc.0429\", \n    \"nomor\" : \"089637278578\", \n    \"language\" : \"id\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/auth/register",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"auth",
+								"register"
+							]
+						},
+						"description": "Register a new user account. After registration, user will receive a verification email. A customer record will also be created in Polar.sh."
+					},
+					"response": []
+				},
+				{
+					"name": "Login User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.token) {",
+									"    pm.environment.set('userToken', jsonData.token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{ \n    \"email\" : \"nugas123usd@gmail.com\",\n    \"password\" : \"Abc.0429\",\n    \"language\" : \"id\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/auth/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"auth",
+								"login"
+							]
+						},
+						"description": "Authenticates a user and returns a JWT token. The token is automatically saved to the userToken environment variable."
+					},
+					"response": []
+				},
+				{
+					"name": "Verify Email",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/auth/verify/:token",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"auth",
+								"verify",
+								":token"
+							],
+							"variable": [
+								{
+									"key": "token",
+									"value": "VERIFICATION_TOKEN_FROM_EMAIL",
+									"description": "JWT token sent in verification email"
+								}
+							]
+						},
+						"description": "Verifies a user's email address using the token sent to their email."
+					},
+					"response": []
+				},
+				{
+					"name": "Request Password Reset",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\" : \"nugas123usd@gmail.com\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/auth/request-forgot-password",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"auth",
+								"request-forgot-password"
+							]
+						},
+						"description": "Requests a password reset link to be sent to the specified email address."
+					},
+					"response": []
+				},
+				{
+					"name": "Logout User",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{userToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/auth/logout",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"auth",
+								"logout"
+							]
+						},
+						"description": "Logs out the currently authenticated user by invalidating their token."
+					},
+					"response": []
+				},
+				{
+					"name": "Register Admin",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{ \n    \"username\": \"adminUSD\", \n    \"email\": \"adminDesignerHubUSD@gmail.com\", \n    \"password\" : \"Abc.123456\" \n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/admin/register",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"admin",
+								"register"
+							]
+						},
+						"description": "Creates a new admin account."
+					},
+					"response": []
+				},
+				{
+					"name": "Login Admin",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.token) {",
+									"    pm.environment.set('adminToken', jsonData.token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{ \n    \"email\" : \"adminDesignerHubUSD@gmail.com\", \n    \"password\" : \"Abc.123456\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/admin/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"admin",
+								"login"
+							]
+						},
+						"description": "Authenticates an admin user and returns a JWT token. The token is automatically saved to the adminToken environment variable."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for user authentication, registration, and session management"
+		},
+		{
+			"name": "2. User Management",
+			"item": [
+				{
+					"name": "Get All Users",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/user?page=1&limit=10&sortColumn=createdAt&sortOrder=desc&status=active",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"user"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "sortColumn",
+									"value": "createdAt"
+								},
+								{
+									"key": "sortOrder",
+									"value": "desc"
+								},
+								{
+									"key": "status",
+									"value": "active",
+									"description": "Filter by user status (active, inactive, suspended, banned)"
+								},
+								{
+									"key": "search",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "premiumAccess",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Returns a paginated list of all users. Admin access only."
+					},
+					"response": []
+				},
+				{
+					"name": "Get User By ID",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/user/USER_ID_HERE",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"user",
+								"USER_ID_HERE"
+							]
+						},
+						"description": "Returns detailed information about a specific user. Admin access only."
+					},
+					"response": []
+				},
+				{
+					"name": "Create User (Admin)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{ \n    \"username\" : \"raykabanAdminCreated\", \n    \"email\" : \"ray.kaban.admin@gmail.com\", \n    \"password\" : \"Abc.0429\", \n    \"nomor\" : \"082251617111\", \n    \"language\" : \"id\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/user/create",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"user",
+								"create"
+							]
+						},
+						"description": "Creates a new user account by an admin. This might bypass email verification or set default values."
+					},
+					"response": []
+				},
+				{
+					"name": "Update User Information (Admin)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"updatedUserByAdmin\",\n    \"email\": \"updated.admin@example.com\",\n    \"nomor\": \"081234567899\",\n    \"status\": \"active\",\n    \"reason\": \"User status updated by admin.\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/user/USER_ID_TO_UPDATE",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"user",
+								"USER_ID_TO_UPDATE"
+							]
+						},
+						"description": "Updates a user's information. Admin access only. Can update status, reason, etc."
+					},
+					"response": []
+				},
+				{
+					"name": "Update User Subscription (Admin)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"activePackage\": [\n        {\n            \"packageId\": \"YOUR_PACKAGE_ID\",\n            \"activeDate\": \"2025-12-31T00:00:00.000Z\",\n            \"priority\": 1,\n            \"statusActive\": true,\n            \"pendingDate\": 0\n        }\n    ],\n    \"premiumAccess\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/user/subscription/USER_ID_FOR_SUBS_UPDATE",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"user",
+								"subscription",
+								"USER_ID_FOR_SUBS_UPDATE"
+							]
+						},
+						"description": "Updates a user's subscription information (e.g., manually activate premium). Admin access only."
+					},
+					"response": []
+				},
+				{
+					"name": "Get User Profile Dashboard",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{userToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/user/profile/dashboard",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"user",
+								"profile",
+								"dashboard"
+							]
+						},
+						"description": "Returns the current user's profile information including subscription details."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete User (Admin)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/user/USER_ID_TO_DELETE",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"user",
+								"USER_ID_TO_DELETE"
+							]
+						},
+						"description": "Permanently deletes a user account. Admin access only."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for managing user accounts and profiles"
+		},
+		{
+			"name": "3. Categories",
+			"item": [
+				{
+					"name": "Get All Categories",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/category/getAll?page=1&limit=15&categoryName=&sortColumn=createdAt&sortOrder=desc",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"category",
+								"getAll"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "15"
+								},
+								{
+									"key": "categoryName",
+									"value": ""
+								},
+								{
+									"key": "sortColumn",
+									"value": "createdAt"
+								},
+								{
+									"key": "sortOrder",
+									"value": "desc"
+								}
+							]
+						},
+						"description": "Returns a paginated list of all categories."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Applications By Category",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/category/applications?categoryId=YOUR_CATEGORY_ID",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"category",
+								"applications"
+							],
+							"query": [
+								{
+									"key": "categoryId",
+									"value": "YOUR_CATEGORY_ID",
+									"description": "ID of the category to get applications (types) for"
+								}
+							]
+						},
+						"description": "Returns all active applications (types) that belong to a specified category. Used for landing page display."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Category",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"AI Tools Category\",\n    \"description\": \"Various AI powered tools.\",\n    \"allApps\": false\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/category/create",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"category",
+								"create"
+							]
+						},
+						"description": "Creates a new category. Admin access might be required (check middleware)."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Category",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Updated AI Tools\",\n    \"description\": \"All AI powered tools and services.\",\n    \"allApps\": false\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/category/update/CATEGORY_ID_TO_UPDATE",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"category",
+								"update",
+								"CATEGORY_ID_TO_UPDATE"
+							]
+						},
+						"description": "Updates an existing category. Admin access might be required."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Category",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/category/delete/CATEGORY_ID_TO_DELETE",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"category",
+								"delete",
+								"CATEGORY_ID_TO_DELETE"
+							]
+						},
+						"description": "Deletes a category. Admin access might be required."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for managing content categories"
+		},
+		{
+			"name": "4. Types (Applications)",
+			"item": [
+				{
+					"name": "Get All Types",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/type?page=1&limit=15&sortColumn=createdAt&sortOrder=desc&search=&status=",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"type"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "15"
+								},
+								{
+									"key": "sortColumn",
+									"value": "createdAt"
+								},
+								{
+									"key": "sortOrder",
+									"value": "desc"
+								},
+								{
+									"key": "search",
+									"value": "",
+									"description": "Search by type name"
+								},
+								{
+									"key": "status",
+									"value": "",
+									"description": "Filter by isActive status (true/false)"
+								}
+							]
+						},
+						"description": "Returns a paginated list of all types (applications). Admin access likely required."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Type",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "name",
+									"value": "New AI Writer",
+									"type": "text"
+								},
+								{
+									"key": "typeLogo",
+									"description": "Logo image for the type. Upload a file.",
+									"type": "file",
+									"src": "/path/to/your/logo.png"
+								},
+								{
+									"key": "status",
+									"value": "all",
+									"description": "Status (e.g., 'all', 'dev', 'ov')",
+									"type": "text"
+								},
+								{
+									"key": "basePrice",
+									"value": "19.99",
+									"description": "Base price in USD",
+									"type": "text"
+								},
+								{
+									"key": "url",
+									"value": "https://aiwriter.example.com",
+									"type": "text"
+								},
+								{
+									"key": "targetType",
+									"value": "credentials",
+									"type": "text"
+								},
+								{
+									"key": "note",
+									"value": "Provides AI writing assistance.",
+									"type": "text"
+								},
+								{
+									"key": "category",
+									"value": "AI",
+									"description": "General category name (can be different from categoryId)",
+									"type": "text"
+								},
+								{
+									"key": "isActive",
+									"value": "true",
+									"type": "text"
+								},
+								{
+									"key": "categoryId",
+									"value": "YOUR_CATEGORY_ID_FOR_AI_TOOLS",
+									"description": "MongoDB ObjectId of the category it belongs to. Can be an array.",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/type/create",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"type",
+								"create"
+							]
+						},
+						"description": "Creates a new type (application) with its logo and details. Admin access likely required."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Type",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "name",
+									"value": "Updated AI Writer Pro",
+									"type": "text"
+								},
+								{
+									"key": "typeLogo",
+									"description": "(Optional) New logo image for the type.",
+									"type": "file",
+									"src": "/path/to/your/new_logo.png"
+								},
+								{
+									"key": "basePrice",
+									"value": "24.99",
+									"description": "Updated base price in USD",
+									"type": "text"
+								},
+								{
+									"key": "isActive",
+									"value": "false",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/type/TYPE_ID_TO_UPDATE",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"type",
+								"TYPE_ID_TO_UPDATE"
+							]
+						},
+						"description": "Updates an existing type (application). Admin access likely required."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Type",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/type/TYPE_ID_TO_DELETE",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"type",
+								"TYPE_ID_TO_DELETE"
+							]
+						},
+						"description": "Deletes a type (application). Admin access likely required."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for managing service types (applications)"
+		},
+		{
+			"name": "5. Items (Service Accounts)",
+			"item": [
+				{
+					"name": "Get All Items",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/item/find?page=1&limit=15&itemName=&typeId=&status=&sortColumn=createdAt&sortOrder=desc",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"item",
+								"find"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "15"
+								},
+								{
+									"key": "itemName",
+									"value": "",
+									"description": "Search by item name"
+								},
+								{
+									"key": "typeId",
+									"value": "",
+									"description": "Filter by Type ID (Application ID)"
+								},
+								{
+									"key": "status",
+									"value": "",
+									"description": "Filter by isActive status (active/inactive)"
+								},
+								{
+									"key": "sortColumn",
+									"value": "createdAt"
+								},
+								{
+									"key": "sortOrder",
+									"value": "desc"
+								}
+							]
+						},
+						"description": "Returns a paginated list of all items (service accounts). Admin access likely required."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Item",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "itemName",
+									"value": "AI Writer Account #1",
+									"type": "text"
+								},
+								{
+									"key": "description",
+									"value": "Primary account for AI Writer service.",
+									"type": "text"
+								},
+								{
+									"key": "jsonFile",
+									"description": "(Optional) JSON file containing cookies for the account.",
+									"type": "file",
+									"src": "/path/to/your/cookies.json"
+								},
+								{
+									"key": "status",
+									"value": "true",
+									"description": "isActive status",
+									"type": "text"
+								},
+								{
+									"key": "endDate",
+									"value": "2025-12-31T00:00:00.000Z",
+									"description": "Expiration date of the account",
+									"type": "text"
+								},
+								{
+									"key": "username",
+									"value": "aiuser@example.com",
+									"type": "text"
+								},
+								{
+									"key": "password",
+									"value": "securePassword123",
+									"type": "text"
+								},
+								{
+									"key": "pin",
+									"value": "1234",
+									"description": "(Optional) PIN for the account",
+									"type": "text"
+								},
+								{
+									"key": "typeId",
+									"value": "TYPE_ID_OF_AI_WRITER_APP",
+									"description": "MongoDB ObjectId of the Type (Application) this item belongs to.",
+									"type": "text"
+								},
+								{
+									"key": "url",
+									"value": "https://aiwriter.example.com/login",
+									"description": "(Optional) Direct login URL",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/item/create",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"item",
+								"create"
+							]
+						},
+						"description": "Creates a new item (service account). Admin access likely required."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Item",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "itemName",
+									"value": "AI Writer Account #1 (Updated)",
+									"type": "text"
+								},
+								{
+									"key": "jsonFile",
+									"description": "(Optional) New JSON file containing cookies.",
+									"type": "file",
+									"src": "/path/to/your/updated_cookies.json"
+								},
+								{
+									"key": "password",
+									"value": "newSecurePassword456",
+									"type": "text"
+								},
+								{
+									"key": "status",
+									"value": "false",
+									"description": "Set to inactive",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/item/update/ITEM_ID_TO_UPDATE",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"item",
+								"update",
+								"ITEM_ID_TO_UPDATE"
+							]
+						},
+						"description": "Updates an existing item (service account). Admin access likely required."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Item",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/item/delete/ITEM_ID_TO_DELETE",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"item",
+								"delete",
+								"ITEM_ID_TO_DELETE"
+							]
+						},
+						"description": "Deletes an item (service account). Admin access likely required."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for managing service items (e.g., accounts with credentials/cookies)"
+		},
+		{
+			"name": "6. Packages (Subscription Plans)",
+			"item": [
+				{
+					"name": "Get All Packages",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/packages/list?page=1&limit=15&search=&sortColumn=packageName&sortOrder=asc&status=",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"packages",
+								"list"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "15"
+								},
+								{
+									"key": "search",
+									"value": ""
+								},
+								{
+									"key": "sortColumn",
+									"value": "packageName"
+								},
+								{
+									"key": "sortOrder",
+									"value": "asc"
+								},
+								{
+									"key": "status",
+									"value": "",
+									"description": "Filter by isActive status ('active' or 'inactive')"
+								}
+							]
+						},
+						"description": "Returns a paginated list of all packages. Admin access only."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Package By ID",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{userToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/packages/YOUR_PACKAGE_ID",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"packages",
+								"YOUR_PACKAGE_ID"
+							]
+						},
+						"description": "Returns detailed information about a specific package. Requires user authentication."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Active Packages (for Users)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{userToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/packages/active?page=1&limit=10&sortColumn=priority&sortOrder=desc&categoryId=",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"packages",
+								"active"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "sortColumn",
+									"value": "priority"
+								},
+								{
+									"key": "sortOrder",
+									"value": "desc"
+								},
+								{
+									"key": "categoryId",
+									"value": "",
+									"description": "(Optional) Filter by Category ID"
+								}
+							]
+						},
+						"description": "Returns a paginated list of active packages available for purchase by users. Prices in USD."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Package",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"packageName\": \"Gold Plan USD\",\n    \"price\": 19.99,\n    \"discountPrice\": 14.99,\n    \"durationName\": \"1 Month\",\n    \"durationInDays\": 30,\n    \"categoryId\": \"YOUR_CATEGORY_ID_FOR_PACKAGES\",\n    \"onDiscount\": true,\n    \"endDiscountDate\": \"2025-12-31T23:59:59.000Z\",\n    \"isActive\": true,\n    \"priority\": 10\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/packages/create",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"packages",
+								"create"
+							]
+						},
+						"description": "Creates a new subscription package. Prices in USD. Will attempt to sync with Polar.sh if active. Admin access only."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Package",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"packageName\": \"Gold Plan USD (Updated)\",\n    \"price\": 21.99,\n    \"discountPrice\": null, \n    \"onDiscount\": false,\n    \"isActive\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/packages/update/YOUR_PACKAGE_ID_TO_UPDATE",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"packages",
+								"update",
+								"YOUR_PACKAGE_ID_TO_UPDATE"
+							]
+						},
+						"description": "Updates an existing package. Prices in USD. Will attempt to sync changes with Polar.sh. Admin access only."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Package",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/packages/delete/PACKAGE_ID_TO_DELETE",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"packages",
+								"delete",
+								"PACKAGE_ID_TO_DELETE"
+							]
+						},
+						"description": "Deletes a package. Will attempt to archive the product in Polar.sh. Admin access only."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for managing subscription packages (plans)"
+		},
+		{
+			"name": "7. Vouchers",
+			"item": [
+				{
+					"name": "Get All Vouchers",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/vouchers/list?page=1&limit=15&search=&sortColumn=createdAt&sortOrder=desc&status=",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"vouchers",
+								"list"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "15"
+								},
+								{
+									"key": "search",
+									"value": "",
+									"description": "Search by voucher name or code"
+								},
+								{
+									"key": "sortColumn",
+									"value": "createdAt"
+								},
+								{
+									"key": "sortOrder",
+									"value": "desc"
+								},
+								{
+									"key": "status",
+									"value": "",
+									"description": "Filter by status ('open' or 'close')"
+								}
+							]
+						},
+						"description": "Returns a paginated list of all vouchers. Admin access only."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Voucher",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"startDate\": \"2025-06-01T00:00:00.000Z\",\n    \"endDate\": \"2025-06-30T23:59:59.000Z\",\n    \"name\": \"Summer Sale USD 15%\",\n    \"packageId\": [\"PACKAGE_ID_1\", \"PACKAGE_ID_2\"], \n    \"discount\": \"15\",\n    \"discountType\": \"percentage\",\n    \"status\": \"open\",\n    \"code\": \"SUMMERUSD15\",\n    \"usageLimit\": 100,\n    \"minimumPurchaseAmount\": 10.00 \n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/vouchers/create",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"vouchers",
+								"create"
+							]
+						},
+						"description": "Creates a new voucher. `discount` is percentage or fixed USD amount. `minimumPurchaseAmount` in USD. `packageId` can be an array of Package ObjectIds or empty for all. Will attempt to sync with Polar.sh. Admin access only."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Voucher",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Summer Sale USD 20% (Updated)\",\n    \"discount\": \"20\",\n    \"discountType\": \"percentage\",\n    \"status\": \"open\",\n    \"code\": \"SUMMERUSD20\",\n    \"usageLimit\": 150,\n    \"minimumPurchaseAmount\": 5.00\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/vouchers/VOUCHER_ID_TO_UPDATE",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"vouchers",
+								"VOUCHER_ID_TO_UPDATE"
+							]
+						},
+						"description": "Updates an existing voucher. Will attempt to sync changes with Polar.sh. Admin access only."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Voucher",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/vouchers/VOUCHER_ID_TO_DELETE",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"vouchers",
+								"VOUCHER_ID_TO_DELETE"
+							]
+						},
+						"description": "Deletes a voucher. Will attempt to archive the discount in Polar.sh. Admin access only."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for managing discount vouchers (integrates with Polar.sh Discounts)"
+		},
+		{
+			"name": "8. Payments (Polar.sh Integration)",
+			"item": [
+				{
+					"name": "Get All Payments",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/payments/getAll?limit=15&payment_status=&search=&sortColumn=payment_time&sortOrder=desc",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"payments",
+								"getAll"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "15"
+								},
+								{
+									"key": "package_id",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "payment_status",
+									"value": ""
+								},
+								{
+									"key": "search",
+									"value": "",
+									"description": "Search by userName, invoice, polar_checkout_id, or polar_order_id"
+								},
+								{
+									"key": "sortColumn",
+									"value": "payment_time"
+								},
+								{
+									"key": "sortOrder",
+									"value": "desc"
+								},
+								{
+									"key": "start",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "to",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "voucher_id",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Returns a paginated list of all payments. Admin access only. Currency is USD."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Payment By ID",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/payments/get/PAYMENT_ID_HERE",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"payments",
+								"get",
+								"PAYMENT_ID_HERE"
+							]
+						},
+						"description": "Returns detailed information about a specific payment. Admin access only."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Payment Statistics",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/payments/stats?startDate=2025-01-01&endDate=2025-01-31",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"payments",
+								"stats"
+							],
+							"query": [
+								{
+									"key": "startDate",
+									"value": "2025-01-01",
+									"description": "Start date (YYYY-MM-DD)"
+								},
+								{
+									"key": "endDate",
+									"value": "2025-01-31",
+									"description": "End date (YYYY-MM-DD)"
+								}
+							]
+						},
+						"description": "Returns payment statistics for a specified period. Admin access only. Revenue in USD."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Payment (User)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{userToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"package_id\": \"YOUR_PACKAGE_ID_FROM_DB\",\n    \"voucher_code\": \"SUMMERUSD15\" \n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/payments/create",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"payments",
+								"create"
+							]
+						},
+						"description": "Creates a new payment for a subscription package via Polar.sh. Requires user authentication. `package_id` is the MongoDB ID of the package. `voucher_code` is optional. Returns a Polar.sh checkout URL."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Payment (Admin)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"payment_status\": \"paid\",\n    \"initial_status\": { \"value\": \"pending\" }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/payments/update/PAYMENT_ID_TO_UPDATE",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"payments",
+								"update",
+								"PAYMENT_ID_TO_UPDATE"
+							]
+						},
+						"description": "Manually updates payment status and processes user subscription. Admin access only. Used for manual reconciliation if needed."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Payment (Admin)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/payments/delete/PENDING_PAYMENT_ID_TO_DELETE",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"payments",
+								"delete",
+								"PENDING_PAYMENT_ID_TO_DELETE"
+							]
+						},
+						"description": "Deletes a payment record. Only 'pending' payments can be deleted. Admin access only."
+					},
+					"response": []
+				},
+				{
+					"name": "Polar.sh Webhook Handler",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Polar-Signature",
+								"value": "t=timestamp,v1=signature_value",
+								"description": "Example: t=1620000000,v1=a1b2c3d4... Actual value from Polar.sh"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"type\": \"checkout_session.completed\",\n    \"data\": {\n        \"id\": \"cs_xxxxxxxxxxxxxx\",\n        \"object\": \"checkout_session\",\n        \"amount_total\": 1000, \n        \"currency\": \"usd\",\n        \"customer_id\": \"cus_yyyyyyyyyyyyy\",\n        \"order_id\": \"ord_zzzzzzzzzzzzz\",\n        \"payment_status\": \"paid\",\n        \"status\": \"complete\",\n        \"metadata\": {\n             \"user_id\": \"USER_MONGO_DB_ID\",\n             \"package_id\": \"PACKAGE_MONGO_DB_ID\",\n             \"invoice\": \"INV...\"\n        }\n        // ... other Polar.sh checkout session data\n    },\n    \"created_at\": \"2025-05-27T10:00:00Z\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/payments/webhook/polar",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"payments",
+								"webhook",
+								"polar"
+							]
+						},
+						"description": "Webhook endpoint for Polar.sh. Receives payment status updates (e.g., 'checkout_session.completed', 'order.paid'). Handles subscription activation/updates. Signature verification is performed."
+					},
+					"response": []
+				},
+				{
+					"name": "Tripay Callback (Legacy)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"reference\": \"TRIPAY_REF\",\n    \"status\": \"PAID\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/be/api/payments/callback",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"payments",
+								"callback"
+							]
+						},
+						"description": "Legacy webhook endpoint for Tripay callbacks. System primarily uses Polar.sh now."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for managing payments, transactions, and subscription activations via Polar.sh."
+		},
+		{
+			"name": "8.1. Polar.sh Product Sync",
+			"item": [
+				{
+					"name": "Sync Single Package with Polar.sh",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/payments/polar/sync-package/YOUR_PACKAGE_ID",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"payments",
+								"polar",
+								"sync-package",
+								"YOUR_PACKAGE_ID"
+							]
+						},
+						"description": "Creates or updates a product in Polar.sh based on the local package data. Admin access only."
+					},
+					"response": []
+				},
+				{
+					"name": "Sync All Unsynced Packages with Polar.sh",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/payments/polar/sync-all-packages",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"payments",
+								"polar",
+								"sync-all-packages"
+							]
+						},
+						"description": "Iterates through all active local packages that don't have a `polar_product_id` and attempts to create them in Polar.sh. Admin access only."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Polar.sh Product Info for a Package",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/payments/polar/product-info/YOUR_PACKAGE_ID",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"payments",
+								"polar",
+								"product-info",
+								"YOUR_PACKAGE_ID"
+							]
+						},
+						"description": "Retrieves the Polar.sh product ID and metadata associated with a local package. Admin access only."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "9. Logs",
+			"item": [
+				{
+					"name": "Get All Logs (Admin)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/log/getAll?page=1&limit=10",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"log",
+								"getAll"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Returns a paginated list of all system logs. Admin access only."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Log By ID (Admin)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{adminToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/log/get/LOG_ID_HERE",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"log",
+								"get",
+								"LOG_ID_HERE"
+							]
+						},
+						"description": "Returns detailed information about a specific log entry. Admin access only."
+					},
+					"response": []
+				},
+				{
+					"name": "Get User Logs (User)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{userToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/be/api/log/user",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"be",
+								"api",
+								"log",
+								"user"
+							]
+						},
+						"description": "Returns logs for the currently authenticated user."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for accessing user activity and system logs"
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:3876",
+			"type": "string"
+		},
+		{
+			"key": "userToken",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "adminToken",
+			"value": "",
+			"type": "string"
+		}
+	]
+}
