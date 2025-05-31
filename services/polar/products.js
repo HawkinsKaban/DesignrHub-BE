@@ -1,5 +1,6 @@
 // services/polar/products.js
 const client = require('./client');
+require('dotenv').config(); 
 
 function determineRecurringInterval(durationInDays) {
     if (durationInDays <= 0) return 'month'; 
@@ -39,15 +40,16 @@ async function createProduct(packageData) {
         }
 
         if (finalPriceInCents === 0 && !(process.env.ALLOW_FREE_PRODUCTS === 'true')) {
-             console.warn(`[PolarProducts] Warning: finalPriceInCents for package ${packageData.packageName} is 0. Ensure Polar setup allows free recurring tiers if intended.`);
+             console.warn(`[PolarProducts] Warning: finalPriceInCents for package ${packageData.packageName} is 0. This might still result in a free tier if Polar handles 0 amount as free.`);
         }
 
-        // VVV MODIFIED PRICE EMBEDDING STRUCTURE VVV
+        // STRUKTUR HARGA DISEMATKAN - BERDASARKAN STRATEGI ALTERNATIF YANG BERHASIL DARI SCRIPT TES ANDA
         const embeddedPriceData = {
-            type: "recurring",
-            recurring_interval: determinedInterval, // Polar API likely expects snake_case for this field in price object
-            amount: finalPriceInCents,             // Changed from price_amount to amount
-            currency: "USD",                 // Changed from price_currency to currency
+            amountType: "fixed",                 // Eksplisit "fixed"
+            type: "recurring",                    // Eksplisit "recurring"
+            recurringInterval: determinedInterval,  // Eksplisit interval harga (camelCase)
+            priceAmount: finalPriceInCents,       // camelCase, dalam sen
+            priceCurrency: "usd",                 // camelCase, lowercase 'usd'
             metadata: { 
                 is_discounted_price_at_creation: isCurrentlyDiscounted,
                 ...(isCurrentlyDiscounted && {
@@ -57,14 +59,14 @@ async function createProduct(packageData) {
                 package_id_internal: packageData._id.toString(),
             }
         };
-        // ^^^ MODIFIED PRICE EMBEDDING STRUCTURE ^^^
 
         const productPayload = {
             name: packageData.packageName,
             description: `${packageData.packageName} - ${packageData.durationName} access.`,
-            is_recurring: true,
-            recurringInterval: determinedInterval, // camelCase for the top-level product property based on previous error
-            prices: [embeddedPriceData], 
+            isRecurring: true, 
+            recurringInterval: determinedInterval, // Interval utama produk (camelCase)
+            prices: [embeddedPriceData],          
+            // organizationId: DIHAPUS karena token sudah scoped ke organisasi
             metadata: { 
                 package_id_internal: packageData._id.toString(),
                 duration_days_internal: packageData.durationInDays,
@@ -79,7 +81,7 @@ async function createProduct(packageData) {
             }
         };
 
-        console.log("[PolarProducts] Sending product data to Polar (with prices array):", JSON.stringify(productPayload, null, 2)); 
+        console.log("[PolarProducts] Sending product data to Polar (using successful structure):", JSON.stringify(productPayload, null, 2)); 
         const productResponse = await client.products.create(productPayload);
         
         if (!productResponse || !productResponse.id) {
@@ -87,24 +89,31 @@ async function createProduct(packageData) {
             throw new Error("Polar product creation failed to return a valid product object or ID.");
         }
         console.log(`[PolarProducts] ✅ Polar product created: ${productResponse.id}, Name: ${productResponse.name}`);
+        console.log("[PolarProducts] Full Product Response from Polar:", JSON.stringify(productResponse, null, 2));
 
-        // VVV ADJUSTED VALIDATION LOGIC VVV
+        // Validasi harga yang dibuat di Polar berdasarkan respons yang Anda log dari skrip tes yang berhasil
         const createdPrice = productResponse.prices?.find(p => 
+            p.amountType === 'fixed' &&                
+            p.priceAmount === finalPriceInCents &&           
+            p.priceCurrency?.toLowerCase() === "usd" &&      
             p.type === "recurring" &&
-            p.recurringInterval === determinedInterval && // API returns camelCase 'recurringInterval'
-            p.amountType !== 'free' &&                  // Ensure it's not free
-            p.amount === finalPriceInCents &&           // Check 'amount'
-            p.currency?.toLowerCase() === "usd" &&      // Check 'currency' (make it case-insensitive for safety)
-            !p.isArchived                               // Check 'isArchived'
+            p.recurringInterval === determinedInterval &&      
+            !p.isArchived                                 
         );
 
         if (!createdPrice) {
-            console.error(`[PolarProducts] ⚠️ Failed to find or validate the created price tier for product ${productResponse.id}. Expected ${finalPriceInCents} USD/${determinedInterval}. Prices received:`, productResponse.prices);
+            console.error(`[PolarProducts] ⚠️ Failed to find or validate the created PAID price tier for product ${productResponse.id}. Expected ${finalPriceInCents} USD/${determinedInterval} with amountType 'fixed'. Prices received:`, JSON.stringify(productResponse.prices, null, 2));
+            
+            // Aktifkan kembali logika arsip jika diinginkan setelah masalah utama teratasi
+            // try {
+            //     await client.products.update(productResponse.id, { is_archived: true });
+            //     console.log(`[PolarProducts] Cleaned up (archived) Polar product ${productResponse.id} due to price validation failure.`);
+            // } catch (cleanupError) { 
+            //     console.error(`[PolarProducts] ⚠️ Failed to cleanup (archive) Polar product ${productResponse.id} after price validation failure: ${cleanupError.message}`);
+            // }
             throw new Error(`Price tier not created or validated as expected in Polar for product ${productResponse.id}.`);
         }
-        // Use createdPrice.amount and createdPrice.currency for logging, as these are confirmed fields from response
-        console.log(`[PolarProducts] ✅ Price tier validated: ID ${createdPrice.id}, Amount: ${createdPrice.amount} ${createdPrice.currency}`);
-        // ^^^ ADJUSTED VALIDATION LOGIC ^^^
+        console.log(`[PolarProducts] ✅ Price tier validated: ID ${createdPrice.id}, Amount: ${createdPrice.priceAmount} ${createdPrice.priceCurrency}, AmountType: ${createdPrice.amountType}, Type: ${createdPrice.type}, Interval: ${createdPrice.recurringInterval}`);
         
         return productResponse;
     } catch (error) {
@@ -157,7 +166,8 @@ async function updateProduct(polarProductId, packageData) {
         const productUpdatePayload = {
             name: packageData.packageName,
             description: `${packageData.packageName} - ${packageData.durationName} access.`,
-            recurringInterval: determinedInterval, // Assuming top-level can be updated, use camelCase for SDK input
+            isRecurring: true,
+            recurringInterval: determinedInterval, 
             metadata: {
                 ...(existingPolarProduct.metadata || {}), 
                 package_id_internal: packageData._id.toString(),
@@ -183,24 +193,25 @@ async function updateProduct(polarProductId, packageData) {
         existingPolarProduct = await client.products.update(polarProductId, productUpdatePayload); 
         console.log(`[PolarProducts] ✅ Polar product details (name, metadata, etc.) updated: ${polarProductId}`);
 
+        // Validasi harga yang ada atau buat yang baru
         let currentSuitablePrice = existingPolarProduct.prices?.find(
-            p => p.type === "recurring" && 
-                 p.recurringInterval === determinedInterval && // API returns camelCase
-                 !p.isArchived && 
-                 p.amountType !== 'free' &&
-                 p.amount === finalPriceInCents &&       // Check 'amount'
-                 p.currency?.toLowerCase() === "usd"     // Check 'currency'
+            p => p.amountType === 'fixed' && 
+                 p.type === "recurring" &&
+                 p.recurringInterval === determinedInterval && 
+                 !p.isArchived &&                           
+                 p.priceAmount === finalPriceInCents && // Gunakan priceAmount dari respons       
+                 p.priceCurrency?.toLowerCase() === "usd" // Gunakan priceCurrency dari respons     
         );
 
         if (!currentSuitablePrice) {
-            console.log(`[PolarProducts] No existing suitable price found, or price details (amount/interval) changed for product ${polarProductId}. Managing prices...`);
+            console.log(`[PolarProducts] No existing suitable paid price found, or price details changed for product ${polarProductId}. Managing prices...`);
             
             if(existingPolarProduct.prices){
                 for (const price of existingPolarProduct.prices) {
                     if (price.type === "recurring" && price.recurringInterval === determinedInterval && !price.isArchived) {
-                        console.warn(`[PolarProducts] ⚠️ Archiving existing price ${price.id} (Amount: ${price.amount || 'N/A'} ${price.currency || 'N/A'}/${price.recurringInterval}) as it needs to be replaced.`);
+                        console.warn(`[PolarProducts] ⚠️ Archiving existing price ${price.id} (Amount: ${price.priceAmount || price.amount || 'N/A'} ${price.priceCurrency || price.currency || 'N/A'}/${price.recurringInterval}) as it needs to be replaced.`);
                         try {
-                            await client.prices.archive(price.id);
+                             await client.prices.update(price.id, { is_archived: true }); 
                             console.log(`[PolarProducts] ✅ Archived old price ${price.id}.`);
                         } catch (archiveError) {
                             console.error(`[PolarProducts] ❌ Failed to archive old price ${price.id}: ${archiveError.message}. Continuing to create new price.`);
@@ -210,11 +221,13 @@ async function updateProduct(polarProductId, packageData) {
             }
 
             console.log(`[PolarProducts] Creating new price for product ${polarProductId} (Interval: ${determinedInterval}, Amount: ${finalPriceInCents} cents).`);
-            const newPriceData = {
+            // Gunakan struktur yang sama dengan embeddedPriceData yang berhasil
+            const newPricePayload = {
+                amountType: "fixed",
                 type: "recurring",
-                recurring_interval: determinedInterval, // snake_case for API
-                amount: finalPriceInCents,             // amount for API
-                currency: "USD",                 // currency for API
+                recurringInterval: determinedInterval,
+                priceAmount: finalPriceInCents,          
+                priceCurrency: "usd",                                 
                 product_id: polarProductId, 
                 metadata: { 
                     is_discounted_price_at_creation: isCurrentlyDiscounted,
@@ -226,14 +239,14 @@ async function updateProduct(polarProductId, packageData) {
                 }
             };
             try {
-                const newPrice = await client.prices.create(newPriceData);
+                const newPrice = await client.prices.create(newPricePayload);
                 console.log(`[PolarProducts] ✅ New recurring price created: ID ${newPrice.id} for product ${polarProductId}.`);
             } catch (newPriceError) {
                 console.error(`[PolarProducts] ❌ Failed to create new price for product ${polarProductId} during update: ${newPriceError.message}`);
                 throw new Error(`Failed to create new price in Polar during product update: ${newPriceError.message}`);
             }
         } else {
-            console.log(`[PolarProducts] Existing price ID ${currentSuitablePrice.id} (Amount: ${currentSuitablePrice.amount} ${currentSuitablePrice.currency}/${currentSuitablePrice.recurringInterval}) is suitable and up-to-date for product ${polarProductId}. No price change needed.`);
+            console.log(`[PolarProducts] Existing price ID ${currentSuitablePrice.id} (Amount: ${currentSuitablePrice.priceAmount} ${currentSuitablePrice.priceCurrency}/${currentSuitablePrice.recurringInterval}) is suitable and up-to-date for product ${polarProductId}. No price change needed.`);
         }
         
         return await client.products.get(polarProductId); 
@@ -256,35 +269,32 @@ async function updateProduct(polarProductId, packageData) {
 async function archiveProduct(polarProductId) {
     try {
         console.log(`[PolarProducts] Attempting to archive Polar product ID: ${polarProductId}`);
-        
-        const product = await client.products.get(polarProductId);
-        if (product && product.prices) {
-            for (const price of product.prices) {
-                if (!price.is_archived) { 
-                    try {
-                        await client.prices.archive(price.id);
-                        console.log(`[PolarProducts] ✅ Archived price ${price.id} for product ${polarProductId}.`);
-                    } catch(priceArchiveError) {
-                         console.warn(`[PolarProducts] ⚠️ Could not archive price ${price.id} for product ${polarProductId}: ${priceArchiveError.message}. Product archival will proceed.`);
-                    }
-                }
-            }
-        }
-
-        const response = await client.products.archive(polarProductId);
-        console.log(`[PolarProducts] ✅ Polar product successfully archived: ${polarProductId}`);
+        const response = await client.products.update(polarProductId, { is_archived: true }); 
+        console.log(`[PolarProducts] ✅ Polar product successfully archived (via update): ${polarProductId}`);
         return response;
     } catch (error) {
         console.error(`[PolarProducts] ❌ Error archiving Polar product ${polarProductId}:`, error.message);
+        let detailedErrorMessage = `Failed to archive product in Polar (ID: ${polarProductId}): ${error.message}`;
         if (error.response && error.response.data) {
-            const errorDetail = error.response.data.detail || JSON.stringify(error.response.data);
-             console.error("[PolarProducts] Polar Error Details:", errorDetail);
-            if (error.response.status === 404 || (typeof errorDetail === 'string' && errorDetail.toLowerCase().includes('not found')) || (typeof errorDetail === 'string' && errorDetail.toLowerCase().includes('archived'))) {
-                console.warn(`[PolarProducts] Product ${polarProductId} already archived or not found in Polar for archiving.`);
-                return { id: polarProductId, is_archived: true, message: "Already archived or not found" };
+            const polarError = error.response.data;
+            console.error("[PolarProducts] Polar Error Details for archive:", JSON.stringify(polarError, null, 2));
+            const specificDetail = polarError.detail || JSON.stringify(polarError.validation_errors || polarError);
+            detailedErrorMessage = `Failed to archive product in Polar (ID: ${polarProductId}): ${specificDetail}`;
+            
+            if (error.response.status === 404) {
+                console.warn(`[PolarProducts] Product ${polarProductId} not found in Polar for archiving.`);
+                return { id: polarProductId, is_archived: true, message: "Not found, assumed archived or never existed" };
+            } else if (typeof specificDetail === 'string' && specificDetail.toLowerCase().includes('archived')) {
+                 console.warn(`[PolarProducts] Product ${polarProductId} already archived in Polar.`);
+                return { id: polarProductId, is_archived: true, message: "Already archived" };
             }
         }
-        throw new Error(`Failed to archive product in Polar: ${error.response?.data?.detail || error.message}`);
+        if (error.message && error.message.includes("Expected object, received string") && 
+            error.response && error.response.data && error.response.data.path && error.response.data.path.length === 0) {
+             console.error("[PolarProducts] Archival failed likely due to SDK expecting a different payload structure for `products.update` when archiving. The payload `{ is_archived: true }` might be too minimal or incorrectly structured for the SDK version.");
+             detailedErrorMessage = `Failed to archive product ${polarProductId} due to SDK payload expectation for update/archive.`;
+        }
+        throw new Error(detailedErrorMessage);
     }
 }
 

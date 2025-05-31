@@ -1,3 +1,4 @@
+// controllers/voucerControllers/deleteVoucher.js
 const mongoose = require("mongoose");
 const VoucherModel = require("../../models/voucerModel");
 const polarService = require("../../services/polarService");
@@ -15,26 +16,41 @@ exports.deleteVoucher = async (req, res) => {
             return res.status(404).json({ message: "Voucher not found" });
         }
         
-        // Archive discount in Polar if it exists
+        let polarAction = "none";
+        let polarMessage = "";
+
         if (voucher.polar_discount_id) {
             try {
-                await polarService.archiveDiscount(voucher.polar_discount_id);
-                console.log(`✅ Voucher archived in Polar: ${voucher.name} (ID: ${voucher.polar_discount_id})`);
+                await polarService.deleteDiscount(voucher.polar_discount_id); // Menggunakan deleteDiscount
+                polarAction = "deleted";
+                polarMessage = `Voucher (Polar ID: ${voucher.polar_discount_id}) deleted from Polar.sh.`;
+                console.log(`[DeleteVoucherCtrl] ✅ ${polarMessage}`);
             } catch (polarError) {
-                console.error(`⚠️ Failed to archive voucher in Polar: ${polarError.message}`);
-                // Don't fail the voucher deletion if Polar archival fails
+                polarAction = "delete_failed";
+                polarMessage = `Failed to delete voucher from Polar.sh (Polar ID: ${voucher.polar_discount_id}): ${polarError.message}. Local voucher will still be deleted.`;
+                console.error(`[DeleteVoucherCtrl] ⚠️ ${polarMessage}`);
+                errorLogs(req, null, `Polar delete failed for voucher ${voucher.name}: ${polarError.message}`, "controllers/voucerControllers/deleteVoucher.js (Polar Delete)");
+                // Tidak menghentikan transaksi, voucher lokal tetap dihapus
             }
+        } else {
+            polarMessage = "No Polar discount ID found, no action taken on Polar.sh.";
+            console.log(`[DeleteVoucherCtrl] ${polarMessage}`);
         }
         
-        // Delete voucher from database
         await VoucherModel.findByIdAndDelete(req.params.id).session(session);
         
         await session.commitTransaction();
         session.endSession();
         
-        res.json({ message: "Voucher deleted successfully" });
+        res.json({ 
+            message: "Voucher deleted successfully from local database.",
+            polar_action: polarAction,
+            polar_message: polarMessage
+        });
     } catch (error) {
-        await session.abortTransaction();
+        if (session.inTransaction()) {
+            await session.abortTransaction();
+        }
         session.endSession();
         errorLogs(req, res, error.message, "controllers/voucherControllers/deleteVoucher.js");
         res.status(500).json({ message: "Server error", error: error.message });

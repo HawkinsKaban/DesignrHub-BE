@@ -1,3 +1,4 @@
+// controllers/authControllers/registerUser.js
 const mongoose = require("mongoose");
 const UserModel = require("../../models/userModel");
 
@@ -31,25 +32,33 @@ exports.registerUser = async (req, res) => {
 
         user = new UserModel({ username, email, password, nomor });
         const createdUser = await user.save({ session });
+        console.log(`[RegisterUserCtrl] User ${createdUser.email} saved to DB (ID: ${createdUser._id}) temporarily.`);
 
         // Create customer in Polar
         try {
             const polarCustomer = await polarService.createOrUpdateCustomer({
-                _id: createdUser._id,
+                _id: createdUser._id, // Ini akan jadi external_id di Polar
                 email: createdUser.email,
                 username: createdUser.username,
-                nomor: createdUser.nomor
+                nomor: createdUser.nomor,
+                createdAt: createdUser.createdAt // Kirim tanggal pembuatan jika berguna untuk metadata Polar
             });
             
-            // Store Polar customer ID in user object
-            createdUser.polarCustomerId = polarCustomer.id;
-            await createdUser.save({ session });
+            createdUser.polarCustomerId = polarCustomer.id; // Simpan ID Customer Polar
+            await createdUser.save({ session }); // Simpan lagi dengan polarCustomerId
             
-            console.log(`✅ User registered with Polar customer ID: ${polarCustomer.id}`);
+            console.log(`[RegisterUserCtrl] ✅ User ${createdUser.email} registered with Polar customer ID: ${polarCustomer.id}`);
         } catch (polarError) {
-            console.error(`⚠️ Error creating Polar customer: ${polarError.message}`);
-            // Don't fail registration if Polar integration fails
-            // We can sync later via background job
+            console.error(`[RegisterUserCtrl] ⚠️ Error creating/updating Polar customer for ${createdUser.email}: ${polarError.message}. Aborting transaction.`);
+            errorLogs(req, null, `Polar customer sync failed for new user ${createdUser.email}: ${polarError.message}`, "controllers/authControllers/registerUser.js (Polar Sync)");
+            
+            await session.abortTransaction(); // BATALKAN TRANSAKSI LOKAL
+            session.endSession();
+            
+            return res.status(500).json({ 
+                message: language === "id" ? "Registrasi pengguna gagal karena masalah sinkronisasi dengan sistem pembayaran. Silakan coba lagi nanti." : "User registration failed due to payment system synchronization issue. Please try again later.",
+                error: `Polar service: ${polarError.message}`
+            });
         }
 
         const token = generateToken(createdUser._id);
@@ -58,23 +67,30 @@ exports.registerUser = async (req, res) => {
 
         await sendEmail(
             createdUser.email,
-            "Verifikasi Email dari Premium Portal",
+            "Verifikasi Email dari Premium Portal", // Sesuaikan subjek jika perlu
             "Terima kasih telah mendaftar di Premium Portal! Untuk melanjutkan, silakan verifikasi email Anda dengan mengklik tautan berikut:",
             emailHtml
         );
 
         await session.commitTransaction();
+        console.log(`[RegisterUserCtrl] Transaction committed for user ${createdUser.email}.`);
         res.status(201).json({
             message: "User registered successfully. Please check your email to verify your account."
         });
 
     } catch (error) {
-        await session.abortTransaction();
-        console.log(error);
-        errorLogs(req, res, error, "controllers/authControllers/registerUser.js");
+        if (session.inTransaction()) {
+            await session.abortTransaction();
+        }
+        console.error('[RegisterUserCtrl] ❌ Server error during user registration:', error);
+        errorLogs(req, res, error.message, "controllers/authControllers/registerUser.js");
         res.status(500).json({ message: "Server error", error: error.message });
 
     } finally {
+        if (session.inTransaction()) { // Pastikan session selalu diakhiri
+            await session.abortTransaction();
+        }
         session.endSession();
+        console.log("[RegisterUserCtrl] User registration process finished.");
     }
 };
