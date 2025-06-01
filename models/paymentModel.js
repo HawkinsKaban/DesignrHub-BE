@@ -1,8 +1,9 @@
 // models/paymentModel.js
 const mongoose = require("mongoose");
 
-const userPaymentSchema = new mongoose.Schema(
+const packageSchema = new mongoose.Schema(
     {
+<<<<<<< Updated upstream
         userId: { type: mongoose.Schema.Types.ObjectId, required: true, ref: "User" },
         userName: { type: String, require: false, trim: true }, // Nama pengguna saat pembayaran
         afiliator_id: { type: mongoose.Schema.Types.ObjectId, ref: "UserAfiliator", default: null, required: false },
@@ -40,16 +41,76 @@ const userPaymentSchema = new mongoose.Schema(
         // Metadata tambahan dari Polar atau sistem internal
         polar_metadata: { type: Object, default: {} }, // Untuk menyimpan raw response dari Polar jika perlu
         internal_notes: { type: String, trim: true } // Catatan internal jika ada
+=======
+        packageName: {
+            type: String,
+            required: true,
+        },
+        price: {
+            type: Number,
+            required: true,
+        },
+        discountPrice: {
+            type: Number,
+        },
+        durationName: {
+            type: String,
+            required: true, 
+        },
+        durationInDays: {
+            type: Number,
+            required: true, 
+        },
+        categoryId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Category",
+            required: false,
+        },
+        onDiscount: {
+            type: Boolean,
+            default: false
+        },
+        endDiscountDate: {
+            type: Date,
+            required: false
+        },
+        isActive: { 
+            type: Boolean,
+            default: true,
+        },
+        priority: {
+            type: Number,
+            required: true,
+            default: 0, 
+        },
+        polar_product_id: {
+            type: String,
+            required: false,
+            unique: true, 
+            sparse: true 
+        },
+        polar_metadata: {
+            type: Object,
+            default: {}
+        }
+>>>>>>> Stashed changes
     },
     {
         timestamps: true, // createdAt, updatedAt
     }
 );
 
+<<<<<<< Updated upstream
 // Indexes (beberapa sudah inline)
 userPaymentSchema.index({ userId: 1, package_id: 1 });
 // payment_time sudah diindex
 // polar_checkout_id, polar_order_id, polar_subscription_id, invoice sudah diindex
+=======
+packageSchema.index({ packageName: 1 });
+packageSchema.index({ categoryId: 1 });
+// The unique index for polar_product_id is already created by `unique: true` in its definition.
+// The explicit `packageSchema.index({ polar_product_id: 1 });` was removed in the previous step and should remain removed.
+>>>>>>> Stashed changes
 
-const UserPayment = mongoose.model("UserPayment", userPaymentSchema);
-module.exports = UserPayment;
+// Apply the defensive pattern to prevent OverwriteModelError:
+module.exports = mongoose.models.Package || mongoose.model('Package', packageSchema);
