@@ -182,10 +182,16 @@ class PolarService {
             if (error.response && error.response.data) {
                 console.error("[PolarService] Polar Error Details:", JSON.stringify(error.response.data, null, 2));
             }
-            throw new Error(`Failed to create product in Polar: ${error.response?.data?.detail || error.response?.data?.message || error.message}`);
+            const detail = error.response?.data?.detail;
+            const validationErrors = error.response?.data?.validation_errors;
+            let errorMessage = detail || error.message;
+            if (validationErrors) {
+                errorMessage += ` Validation Errors: ${JSON.stringify(validationErrors)}`;
+            }
+            throw new Error(`Failed to create product/price in Polar: ${errorMessage}`);
         }
->>>>>>> Stashed changes
     }
+
     async updateProduct(productId, packageData) {
 <<<<<<< Updated upstream
         return productsAPI.updateProduct(productId, packageData);
@@ -379,9 +385,6 @@ class PolarService {
         }
         return checkoutsAPI.createCheckout(checkoutData);
     }
-<<<<<<< Updated upstream
-=======
-
 
 >>>>>>> Stashed changes
     async getCheckout(checkoutId) {
@@ -582,76 +585,41 @@ class PolarService {
     }
 
     async cancelSubscription(subscriptionId) {
-         if (client && client.subscriptions && typeof client.subscriptions.cancel === 'function') {
-            try {
-                console.log(`[PolarService] Canceling Polar subscription by ID: ${subscriptionId}`);
-                return await client.subscriptions.cancel(subscriptionId);  // Asumsi SDK punya client.subscriptions.cancel({id: subscriptionId})
-            } catch (error) {
-                // ... (error handling seperti yang sudah Anda miliki)
-                console.error(`[PolarService] ❌ Error canceling Polar subscription (ID: ${subscriptionId}):`, error.message);
-                if (error.response && error.response.data) {
-                    console.error("[PolarService] Polar Error Details for cancelSubscription:", JSON.stringify(error.response.data, null, 2));
-                }
-                throw new Error(`Failed to cancel subscription in Polar (ID: ${subscriptionId}): ${error.response?.data?.detail || error.message}`);
+        try {
+            console.log(`[PolarService] Cancelling Polar subscription ID: ${subscriptionId}`);
+            const response = await this.client.subscriptions.cancel(subscriptionId);
+            console.log(`[PolarService] ✅ Polar subscription cancelled: ${subscriptionId}`);
+            return response;
+        } catch (error) {
+            console.error("[PolarService] ❌ Error cancelling Polar subscription:", error.message);
+            if (error.response && error.response.data) {
+                console.error("[PolarService] Polar Error Details:", JSON.stringify(error.response.data, null, 2));
             }
+            throw new Error(`Failed to cancel subscription in Polar: ${error.response?.data?.detail || error.response?.data?.message || error.message}`);
         }
-        console.warn("[PolarService] cancelSubscription: Polar client or method not available.");
-        throw new Error("Polar client.subscriptions.cancel is not available or not a function.");
     }
 
-<<<<<<< Updated upstream
-    // Webhooks
-    verifyWebhookSignature(rawBody, signatureHeader) {
-        const secret = process.env.POLAR_WEBHOOK_SECRET;
-        if (!secret) {
-            console.error("[PolarService] CRITICAL: POLAR_WEBHOOK_SECRET is not configured. Cannot verify webhook signature.");
-            // Di produksi, ini harusnya menghasilkan error atau setidaknya flag bahwa verifikasi tidak bisa dilakukan.
-            // Jika tidak ada secret, dan kita di produksi, verifikasi harus gagal.
-            if (process.env.NODE_ENV === 'production') return false;
-            // Di non-prod, jika tidak ada secret, kita bisa log warning dan return true (untuk testing lokal tanpa ngrok/secret)
-            // TAPI ini berisiko jika tidak sengaja terdeploy.
-            console.warn("[PolarService] POLAR_WEBHOOK_SECRET not set. Skipping signature verification (non-production only with this setting).");
-            return true; // HATI-HATI dengan ini di production.
-        }
-
+    verifyWebhookSignature(payload, signatureHeader) {
         try {
-            // Menggunakan utilitas dari @polar-sh/sdk/webhooks
-            // `rawBody` harus berupa Buffer atau string mentah
-            // `signatureHeader` adalah nilai dari header 'Polar-Signature'
-            const event = validateEvent(
-                rawBody, // ini harus raw body (Buffer atau string)
-                { 'polar-signature': signatureHeader }, // headers object
-                secret
-            );
-            console.log("[PolarService] Webhook signature verified successfully using @polar-sh/sdk/webhooks.");
-            return event; // Mengembalikan event yang sudah divalidasi dan di-parse
-        } catch (error) {
-            if (error instanceof WebhookVerificationError) {
-                console.error("[PolarService] Webhook signature verification failed (WebhookVerificationError):", error.message);
-            } else {
-                console.error("[PolarService] An unexpected error occurred during webhook signature verification:", error.message);
-            }
-=======
-    verifyWebhookSignature(payload, signature) {
-        try {
-            if (!process.env.POLAR_WEBHOOK_SECRET) {
-                console.warn("[PolarService] ⚠️ POLAR_WEBHOOK_SECRET not set - webhook verification will be skipped for this request (NOT RECOMMENDED FOR PRODUCTION)");
-                return true;
+            const secret = process.env.POLAR_WEBHOOK_SECRET;
+            if (!secret) {
+                console.warn("[PolarService] ⚠️ POLAR_WEBHOOK_SECRET not set. Webhook signature verification will be skipped. THIS IS NOT RECOMMENDED FOR PRODUCTION.");
+                // In a development/testing environment without a secret, you might choose to bypass verification.
+                // For production, this should ideally throw an error or always return false if the secret is missing.
+                return process.env.NODE_ENV !== 'production'; // Bypass only if not in production
             }
 
-            const payloadString = typeof payload === 'string' ? payload : JSON.stringify(payload);
-            const hmac = crypto.createHmac('sha256', process.env.POLAR_WEBHOOK_SECRET);
-            hmac.update(payloadString);
-            const computedSignature = hmac.digest('hex');
-
-            if (typeof signature !== 'string' || typeof computedSignature !== 'string') {
-                console.warn("[PolarService] Webhook signature or computed signature is not a string.");
+            if (!signatureHeader) {
+                console.warn("[PolarService] Webhook signature header ('Polar-Signature') is missing.");
                 return false;
             }
+            
+            const payloadString = typeof payload === 'string' ? payload : JSON.stringify(payload);
 
-            const parts = signature.split(',');
-            let sigValue;
-            for (const part of parts) {
+            // The Polar-Signature header typically looks like: "t=timestamp,v1=signature"
+            const parts = signatureHeader.split(',');
+            const signatureMap = {};
+            parts.forEach(part => {
                 const [key, value] = part.split('=');
                 if (key === 'v1') sigValue = value;
             }
@@ -675,8 +643,7 @@ class PolarService {
             return isValid;
 
         } catch (error) {
-            console.error("[PolarService] ❌ Webhook signature verification error:", error);
->>>>>>> Stashed changes
+            console.error("[PolarService] ❌ Webhook signature verification error:", error.message);
             return false;
         }
     }
